@@ -713,7 +713,9 @@ function mailDrafts(extra: unknown): DraftOps {
       };
     },
     check: (draft) => checkDraft(draft.snapshot, draft.createdAt),
-    reveal: (draft) => revealDraft(draft.snapshot.id),
+    reveal: async (draft) => {
+      await revealDraft(draft.snapshot.id);
+    },
     remove: (draft) => deleteDraftCopies(draft.snapshot),
   };
 }

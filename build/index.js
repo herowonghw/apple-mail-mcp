@@ -111731,15 +111731,8 @@ async function revealDraft(id) {
       "on run argv",
       'tell application "Mail"',
       "  set m to first message of drafts mailbox whose id is ((item 1 of argv) as integer)",
+      "  open m",
       "  activate",
-      "  try",
-      "    if (count of message viewers) is 0 then make new message viewer",
-      "    set mv to message viewer 1",
-      "    set selected mailboxes of mv to {drafts mailbox}",
-      "    set selected messages of mv to {m}",
-      "  on error",
-      "    open m",
-      "  end try",
       "end tell",
       "end run"
     ],
@@ -112112,7 +112105,9 @@ function mailDrafts(extra) {
       };
     },
     check: (draft) => checkDraft(draft.snapshot, draft.createdAt),
-    reveal: (draft) => revealDraft(draft.snapshot.id),
+    reveal: async (draft) => {
+      await revealDraft(draft.snapshot.id);
+    },
     remove: (draft) => deleteDraftCopies(draft.snapshot)
   };
 }

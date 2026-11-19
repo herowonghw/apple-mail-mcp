@@ -171,22 +171,19 @@ export async function sentSince(subject: string, since: Date): Promise<boolean> 
   return Number(out) > 0;
 }
 
-/** Shows the draft in Mail's viewer (opening it for editing if it cannot be selected). */
+/**
+ * Opens this exact draft (by id) in its own Mail window. Selecting it in the
+ * main viewer is not used: Mail's viewer scripting fails on recent macOS, and it
+ * would also change the mailbox the person is looking at.
+ */
 export async function revealDraft(id: string): Promise<void> {
   await runMail(
     [
       "on run argv",
       'tell application "Mail"',
       "  set m to first message of drafts mailbox whose id is ((item 1 of argv) as integer)",
+      "  open m",
       "  activate",
-      "  try",
-      "    if (count of message viewers) is 0 then make new message viewer",
-      "    set mv to message viewer 1",
-      "    set selected mailboxes of mv to {drafts mailbox}",
-      "    set selected messages of mv to {m}",
-      "  on error",
-      "    open m",
-      "  end try",
       "end tell",
       "end run",
     ],
