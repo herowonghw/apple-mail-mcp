@@ -63339,12 +63339,20 @@ function runNative(binary, title, details, actions) {
         const line = out.slice(0, newline).trim();
         out = out.slice(newline + 1);
         if (line === "OPEN_DRAFT") actions.openDraft?.();
-        else if (line) word = line;
+        else if (line === "READY") {
+          actions.onReady?.({
+            confirm: () => void child.stdin.write("CONFIRM\n"),
+            cancel: () => void child.stdin.write("CANCEL\n")
+          });
+        } else if (line) word = line;
       }
     });
     child.on("error", () => resolve4("error"));
+    child.stdin.on("error", () => {
+    });
     child.on("close", () => {
       clearTimeout(timer);
+      child.stdin.end();
       if (out.trim()) word = out.trim();
       resolve4(
         word === "APPROVED" ? "approved" : word === "CANCELLED" ? "cancelled" : word === "TIMEOUT" ? "timeout" : "error"
@@ -63352,7 +63360,8 @@ function runNative(binary, title, details, actions) {
     });
     const shown = { ...details };
     delete shown.tempFiles;
-    child.stdin.end(JSON.stringify({ title, ...shown, timeoutSeconds: TIMEOUT_SECONDS }));
+    child.stdin.write(`${JSON.stringify({ title, ...shown, timeoutSeconds: TIMEOUT_SECONDS })}
+`);
   });
 }
 var FALLBACK_SCRIPT = [
@@ -63382,7 +63391,50 @@ function runFallback(title, text) {
     );
   });
 }
-async function fallbackPrompt(title, details) {
+function runFallbackClick(title, text, actions) {
+  const script = [
+    "on run argv",
+    `set r to display dialog (item 2 of argv) with title (item 1 of argv) buttons {"\u53D6\u6D88", "\u786E\u8BA4\u6267\u884C"} default button "\u53D6\u6D88" cancel button "\u53D6\u6D88" with icon caution giving up after ${TIMEOUT_SECONDS}`,
+    'if gave up of r then return "GAVEUP"',
+    'if button returned of r is "\u786E\u8BA4\u6267\u884C" then return "OK"',
+    'return "NO"',
+    "end run"
+  ];
+  return new Promise((resolve4) => {
+    let forced;
+    const child = execFile(
+      "osascript",
+      [...script.flatMap((line) => ["-e", line]), title, text],
+      { timeout: (TIMEOUT_SECONDS + 20) * 1e3 },
+      (error2, stdout, stderr) => {
+        if (forced) return resolve4(forced);
+        if (error2) return resolve4(String(stderr).includes("-128") ? "cancelled" : "error");
+        const out = String(stdout).trim();
+        resolve4(out === "OK" ? "approved" : out === "GAVEUP" ? "timeout" : "cancelled");
+      }
+    );
+    actions.onReady?.({
+      confirm: () => {
+        forced = "approved";
+        child.kill();
+      },
+      cancel: () => {
+        forced = "cancelled";
+        child.kill();
+      }
+    });
+  });
+}
+async function fallbackPrompt(title, details, actions) {
+  if (details.skipCode) {
+    return runFallbackClick(
+      title,
+      `${detailsText(details)}
+
+\uFF08\u5DF2\u5728\u5BF9\u8BDD\u4E2D\u9009\u62E9\u8DF3\u8FC7\u9A8C\u8BC1\u7801\uFF09`,
+      actions
+    );
+  }
   const draft = details.draftAvailable ? "\n\n\u8349\u7A3F\u5DF2\u5B58\u5728 Mail \u8349\u7A3F\u7BB1\uFF0C\u53EF\u4EE5\u5148\u53BB Mail \u91CC\u67E5\u770B\uFF1B\u5728 Mail \u91CC\u81EA\u5DF1\u53D1\u9001\u7684\u8BDD\uFF0C\u8FD9\u91CC\u4E0D\u4F1A\u91CD\u590D\u53D1\u9001\u3002" : "";
   let body = `${detailsText(details)}${draft}
 
@@ -63402,7 +63454,7 @@ var macDialogPrompt = async (title, details, actions = {}) => {
     const outcome = await runNative(binary, title, details, actions);
     if (outcome !== "error") return outcome;
   }
-  return fallbackPrompt(title, details);
+  return fallbackPrompt(title, details, actions);
 };
 
 // src/cli.ts

@@ -16,9 +16,18 @@ import { detailsText, type OperationDetails } from "@/utils/operationDetails.js"
 
 export type PromptOutcome = "approved" | "cancelled" | "timeout" | "error";
 
+/** Presses a button of the open window on the person's behalf. */
+export interface WindowControl {
+  /** Only takes effect in a window without a code (skipCode). */
+  confirm(): void;
+  cancel(): void;
+}
+
 export interface PromptActions {
   /** Called when the person asks to see the draft in Mail; the window stays open. */
   openDraft?: () => void;
+  /** Called once the window is on screen. */
+  onReady?: (control: WindowControl) => void;
 }
 
 /** Shows the dialog and resolves once the person has answered. */
@@ -97,12 +106,19 @@ function runNative(
         const line = out.slice(0, newline).trim();
         out = out.slice(newline + 1);
         if (line === "OPEN_DRAFT") actions.openDraft?.();
-        else if (line) word = line;
+        else if (line === "READY") {
+          actions.onReady?.({
+            confirm: () => void child.stdin.write("CONFIRM\n"),
+            cancel: () => void child.stdin.write("CANCEL\n"),
+          });
+        } else if (line) word = line;
       }
     });
     child.on("error", () => resolve("error"));
+    child.stdin.on("error", () => {});
     child.on("close", () => {
       clearTimeout(timer);
+      child.stdin.end();
       if (out.trim()) word = out.trim();
       resolve(
         word === "APPROVED"
@@ -116,7 +132,8 @@ function runNative(
     });
     const shown: Partial<OperationDetails> = { ...details };
     delete shown.tempFiles;
-    child.stdin.end(JSON.stringify({ title, ...shown, timeoutSeconds: TIMEOUT_SECONDS }));
+    // The payload is the first line; stdin stays open for CONFIRM / CANCEL.
+    child.stdin.write(`${JSON.stringify({ title, ...shown, timeoutSeconds: TIMEOUT_SECONDS })}\n`);
   });
 }
 
@@ -153,7 +170,60 @@ function runFallback(title: string, text: string): Promise<PromptOutcome | "retr
 }
 
 /** Plain AppleScript dialog: up to three tries to type 6 letters or digits. */
-async function fallbackPrompt(title: string, details: OperationDetails): Promise<PromptOutcome> {
+/** AppleScript dialog without a code, for skipCode: Cancel is the default, so Return does not confirm. */
+function runFallbackClick(
+  title: string,
+  text: string,
+  actions: PromptActions
+): Promise<PromptOutcome> {
+  const script = [
+    "on run argv",
+    "set r to display dialog (item 2 of argv) with title (item 1 of argv) " +
+      'buttons {"取消", "确认执行"} default button "取消" cancel button "取消" ' +
+      `with icon caution giving up after ${TIMEOUT_SECONDS}`,
+    'if gave up of r then return "GAVEUP"',
+    'if button returned of r is "确认执行" then return "OK"',
+    'return "NO"',
+    "end run",
+  ];
+  return new Promise((resolve) => {
+    let forced: PromptOutcome | undefined;
+    const child = execFile(
+      "osascript",
+      [...script.flatMap((line) => ["-e", line]), title, text],
+      { timeout: (TIMEOUT_SECONDS + 20) * 1000 },
+      (error, stdout, stderr) => {
+        if (forced) return resolve(forced);
+        if (error) return resolve(String(stderr).includes("-128") ? "cancelled" : "error");
+        const out = String(stdout).trim();
+        resolve(out === "OK" ? "approved" : out === "GAVEUP" ? "timeout" : "cancelled");
+      }
+    );
+    actions.onReady?.({
+      confirm: () => {
+        forced = "approved";
+        child.kill();
+      },
+      cancel: () => {
+        forced = "cancelled";
+        child.kill();
+      },
+    });
+  });
+}
+
+async function fallbackPrompt(
+  title: string,
+  details: OperationDetails,
+  actions: PromptActions
+): Promise<PromptOutcome> {
+  if (details.skipCode) {
+    return runFallbackClick(
+      title,
+      `${detailsText(details)}\n\n（已在对话中选择跳过验证码）`,
+      actions
+    );
+  }
   const draft = details.draftAvailable
     ? "\n\n草稿已存在 Mail 草稿箱，可以先去 Mail 里查看；在 Mail 里自己发送的话，这里不会重复发送。"
     : "";
@@ -173,5 +243,5 @@ export const macDialogPrompt: HumanPrompt = async (title, details, actions = {})
     const outcome = await runNative(binary, title, details, actions);
     if (outcome !== "error") return outcome;
   }
-  return fallbackPrompt(title, details);
+  return fallbackPrompt(title, details, actions);
 };

@@ -1,8 +1,11 @@
 // Native confirmation window for apple-mail-mcp (see src/utils/confirmationGate.ts).
 //
-// Reads a JSON payload on stdin, shows what is about to happen, and waits for a
-// person to fill six boxes with any letters or digits. Prints and exits with:
+// Reads a JSON payload as the first line of stdin, shows what is about to happen,
+// and waits for a person to fill six boxes with any letters or digits. Prints
+// READY once on screen (and OPEN_DRAFT when asked to show the draft), then exits with:
 //   APPROVED (0), CANCELLED (1), TIMEOUT (2), ERROR (3).
+// With skipCode the boxes are left out: a click confirms, and so does a CONFIRM line
+// on stdin. CANCEL on stdin cancels either kind of window.
 //
 // CONFIRM_DIALOG_SNAPSHOT=<path> renders the window to a PNG instead (debugging aid).
 import AppKit
@@ -21,6 +24,7 @@ struct Payload: Decodable {
     let highlights: [Field]?
     let fields: [Field]
     let draftAvailable: Bool?
+    let skipCode: Bool?
     let summary: String?
     let imagePath: String?
     let imageCaption: String?
@@ -33,8 +37,8 @@ func finish(_ word: String, _ code: Int32) -> Never {
     exit(code)
 }
 
-let input = FileHandle.standardInput.readDataToEndOfFile()
-guard let payload = try? JSONDecoder().decode(Payload.self, from: input) else {
+guard let firstLine = readLine(strippingNewline: true),
+      let payload = try? JSONDecoder().decode(Payload.self, from: Data(firstLine.utf8)) else {
     finish("ERROR", 3)
 }
 
@@ -225,6 +229,7 @@ final class Controller: NSObject, NSTextFieldDelegate {
     var countdown: NSTextField!
     var window: NSWindow!
     var remaining = 180
+    var skipCode = false
 
     var fields: [CodeField] { boxes.map(\.field) }
 
@@ -290,7 +295,7 @@ final class Controller: NSObject, NSTextFieldDelegate {
     }
 
     @objc func approve() {
-        guard fields.allSatisfy({ $0.stringValue.count == 1 }) else { return }
+        guard skipCode || fields.allSatisfy({ $0.stringValue.count == 1 }) else { return }
         finish("APPROVED", 0)
     }
 
@@ -455,7 +460,10 @@ if let path = payload.imagePath, let image = NSImage(contentsOfFile: path),
                            spacing: 6))
 }
 
-// Code entry.
+let skipCode = payload.skipCode == true
+controller.skipCode = skipCode
+
+// Code entry (left out when the user skipped the code in the conversation).
 let codeRow = NSStackView()
 codeRow.orientation = .horizontal
 codeRow.spacing = 10
@@ -469,10 +477,17 @@ for index in 0..<6 {
 let codeTitle = text("请输入任意 6 位字母或数字以确认", size: 13, weight: .semibold)
 let codeHint = text("字母会自动转为大写。这个窗口由 Apple Mail MCP 弹出，AI 无法代填。",
                     size: 11, color: .tertiaryLabelColor)
-let codeSection = vstack([codeTitle, codeHint, codeRow], spacing: 8)
-codeSection.alignment = .centerX
-codeSection.setCustomSpacing(14, after: codeHint)
-sections.append(fixedWidth(codeSection, contentWidth))
+if skipCode {
+    let notice = text("你已在对话中选择这次跳过验证码。核对上面的发件邮箱和收件人后，" +
+                      "可以直接点「\(payload.confirmLabel ?? "确认执行")」，也可以在对话里让 AI 代为确认。",
+                      size: 12, color: .secondaryLabelColor, width: contentWidth - cardPadding * 2)
+    sections.append(vstack([sectionTitle("已跳过验证码"), card(notice)], spacing: 6))
+} else {
+    let codeSection = vstack([codeTitle, codeHint, codeRow], spacing: 8)
+    codeSection.alignment = .centerX
+    codeSection.setCustomSpacing(14, after: codeHint)
+    sections.append(fixedWidth(codeSection, contentWidth))
+}
 
 // Buttons and countdown.
 let countdown = text("\(controller.remaining) 秒后自动取消", size: 11, color: .tertiaryLabelColor)
@@ -484,7 +499,8 @@ let okButton = NSButton(title: payload.confirmLabel ?? "确认执行", target: c
                         action: #selector(Controller.approve))
 okButton.controlSize = .large
 okButton.bezelColor = accent
-okButton.keyEquivalent = "\r"
+// Without a code, Return must not confirm: the window may appear while the person is typing.
+okButton.keyEquivalent = skipCode ? "" : "\r"
 okButton.isEnabled = false
 controller.okButton = okButton
 for button in [cancelButton, okButton] {
@@ -519,9 +535,11 @@ window.setContentSize(NSSize(width: windowWidth, height: root.fittingSize.height
 window.center()
 
 if let snapshot = snapshotPath {
-    controller.boxes[0].field.stringValue = "A"
-    controller.boxes[1].field.stringValue = "7"
-    controller.highlight(2)
+    if !skipCode {
+        controller.boxes[0].field.stringValue = "A"
+        controller.boxes[1].field.stringValue = "7"
+        controller.highlight(2)
+    }
     window.appearance = snapshotAppearance
     let view = window.contentView!
     view.layoutSubtreeIfNeeded()
@@ -543,7 +561,27 @@ if let snapshot = snapshotPath {
 }
 
 window.makeKeyAndOrderFront(nil)
-controller.focus(0)
+if skipCode {
+    window.makeFirstResponder(nil)
+    // A short delay, so a click meant for another window does not land on the button.
+    Timer.scheduledTimer(withTimeInterval: 1, repeats: false) { _ in okButton.isEnabled = true }
+} else {
+    controller.focus(0)
+}
 app.activate(ignoringOtherApps: true)
+print("READY")
+fflush(stdout)
+
+// Commands from the server: CONFIRM presses the button of a code-free window; a
+// window with a code ignores it. CANCEL cancels. EOF changes nothing.
+Thread.detachNewThread {
+    while let line = readLine(strippingNewline: true) {
+        let command = line.trimmingCharacters(in: .whitespaces)
+        DispatchQueue.main.async {
+            if command == "CONFIRM", controller.skipCode { controller.approve() }
+            if command == "CANCEL" { controller.cancel() }
+        }
+    }
+}
 Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in controller.tick() }
 app.run()

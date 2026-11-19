@@ -9,6 +9,8 @@ import {
   type DraftOps,
   type DraftRef,
   type HumanPrompt,
+  type PromptOutcome,
+  type ToolRunner,
 } from "./confirmationGate.js";
 import type { DraftCheck } from "./draftTracker.js";
 import { READ_ONLY_TOOLS, SENDING_TOOLS } from "./toolMode.js";
@@ -314,62 +316,88 @@ describe("ConfirmationGate with a Mail draft", () => {
   });
 });
 
+/** A window that waits for its control (or a click) like the real one. */
+function controllableWindow(click?: PromptOutcome) {
+  const seen: { skipCode?: boolean } = {};
+  const prompt: HumanPrompt = (_title, details, actions) =>
+    new Promise((resolve) => {
+      seen.skipCode = details.skipCode;
+      actions?.onReady?.({
+        confirm: () => details.skipCode && resolve("approved"),
+        cancel: () => resolve("cancelled"),
+      });
+      if (click) setTimeout(() => resolve(click), 1);
+    });
+  return { prompt, seen };
+}
+
 describe("ConfirmationGate with a skipped code", () => {
-  it("confirms in the chat client instead of the window", async () => {
-    const promptSpy = vi.fn<HumanPrompt>(async () => "approved");
-    const gate = new ConfirmationGate(promptSpy);
-    const clientConfirm = vi.fn(async () => "approved" as const);
-    const exec = vi.fn(async () => OK);
-    const first = await gate.run("send-email", SEND, exec, { clientConfirm });
-    const token = tokenFrom(textOf(first));
+  async function waiting(gate: ConfirmationGate, exec: ToolRunner) {
+    const token = tokenFrom(textOf(await gate.run("send-email", SEND, exec)));
     const result = await gate.run(
       "send-email",
       { ...SEND, confirmationToken: token, skipCode: true },
-      exec,
-      { clientConfirm }
+      exec
     );
-    expect(result).toBe(OK);
-    expect(clientConfirm).toHaveBeenCalledTimes(1);
-    expect(promptSpy).not.toHaveBeenCalled();
-    expect(exec).toHaveBeenCalledWith(SEND);
+    const actionId = /actionId: "([^"]+)"/.exec(textOf(result))?.[1];
+    return { result, actionId };
+  }
+
+  it("returns at once with an actionId and a code-free window", async () => {
+    const win = controllableWindow();
+    const gate = new ConfirmationGate(win.prompt);
+    const exec = vi.fn(async () => OK);
+    const { result, actionId } = await waiting(gate, exec);
+    expect(textOf(result)).toContain("WAITING FOR CONFIRMATION");
+    expect(actionId).toBeTruthy();
+    expect(win.seen.skipCode).toBe(true);
+    expect(exec).not.toHaveBeenCalled();
   });
 
-  it("does not run when the user declines in the chat client", async () => {
-    const gate = new ConfirmationGate(async () => "approved");
+  it("runs the action when answer-pending-confirmation confirms", async () => {
+    const gate = new ConfirmationGate(controllableWindow().prompt);
     const exec = vi.fn(async () => OK);
-    const clientConfirm = vi.fn(async () => "cancelled" as const);
-    const token = tokenFrom(textOf(await gate.run("send-email", SEND, exec, { clientConfirm })));
-    const result = await gate.run(
-      "send-email",
-      { ...SEND, confirmationToken: token, skipCode: true },
-      exec,
-      { clientConfirm }
-    );
+    const { actionId } = await waiting(gate, exec);
+    expect(await gate.answer(actionId!, "confirm")).toBe(OK);
+    expect(exec).toHaveBeenCalledWith(SEND);
+    expect((await gate.answer(actionId!, "confirm")).isError).toBe(true);
+  });
+
+  it("does nothing when answered with cancel", async () => {
+    const gate = new ConfirmationGate(controllableWindow().prompt);
+    const exec = vi.fn(async () => OK);
+    const { actionId } = await waiting(gate, exec);
+    const result = await gate.answer(actionId!, "cancel");
     expect(result.isError).toBe(true);
     expect(exec).not.toHaveBeenCalled();
   });
 
-  it("falls back to the code window when the client cannot prompt", async () => {
-    const promptSpy = vi.fn<HumanPrompt>(async () => "approved");
-    const gate = new ConfirmationGate(promptSpy);
+  it("reports the result when the person clicked the window themselves", async () => {
+    const gate = new ConfirmationGate(controllableWindow("approved").prompt);
     const exec = vi.fn(async () => OK);
-    const clientConfirm = vi.fn(async () => "unsupported" as const);
-    const token = tokenFrom(textOf(await gate.run("send-email", SEND, exec, { clientConfirm })));
-    await gate.run("send-email", { ...SEND, confirmationToken: token, skipCode: true }, exec, {
-      clientConfirm,
-    });
-    expect(promptSpy).toHaveBeenCalledTimes(1);
+    const { actionId } = await waiting(gate, exec);
+    await new Promise((r) => setTimeout(r, 10));
+    // Confirming again does not run it twice; it reports what the click did.
+    expect(await gate.answer(actionId!, "confirm")).toBe(OK);
+    expect(exec).toHaveBeenCalledTimes(1);
   });
 
-  it("uses the code window when the user did not skip", async () => {
-    const promptSpy = vi.fn<HumanPrompt>(async () => "approved");
-    const gate = new ConfirmationGate(promptSpy);
+  it("cannot confirm a window that needs a code", async () => {
+    const win = controllableWindow();
+    const gate = new ConfirmationGate(win.prompt);
     const exec = vi.fn(async () => OK);
-    const clientConfirm = vi.fn(async () => "approved" as const);
-    const token = tokenFrom(textOf(await gate.run("send-email", SEND, exec, { clientConfirm })));
-    await gate.run("send-email", { ...SEND, confirmationToken: token }, exec, { clientConfirm });
-    expect(clientConfirm).not.toHaveBeenCalled();
-    expect(promptSpy).toHaveBeenCalledTimes(1);
+    const token = tokenFrom(textOf(await gate.run("send-email", SEND, exec)));
+    const pending = gate.run("send-email", { ...SEND, confirmationToken: token }, exec);
+    await new Promise((r) => setTimeout(r, 5));
+    expect(win.seen.skipCode).toBeUndefined();
+    expect((await gate.answer("anything", "confirm")).isError).toBe(true);
+    expect(exec).not.toHaveBeenCalled();
+    void pending;
+  });
+
+  it("an unknown actionId is refused", async () => {
+    const gate = new ConfirmationGate(controllableWindow().prompt);
+    expect((await gate.answer("nope", "confirm")).isError).toBe(true);
   });
 });
 

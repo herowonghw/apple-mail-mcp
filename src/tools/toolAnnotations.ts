@@ -62,6 +62,8 @@ export const TOOL_ANNOTATIONS: Readonly<Record<string, ToolAnnotations>> = {
   "get-message-rfc822": WRITE, // optional savePath creates a file
   "save-attachment": WRITE, // creates a new file; never overwrites
   "create-draft": WRITE,
+  // Presses the confirm button of a code-free window, which can send mail.
+  "answer-pending-confirmation": SEND,
   "use-template": WRITE, // creates a draft
   "move-message": WRITE,
   "batch-move-messages": WRITE,

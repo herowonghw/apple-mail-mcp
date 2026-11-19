@@ -60,6 +60,8 @@ export const READ_ONLY_TOOLS = new Set([
 
 /** Tools that write without sending. get-message-rfc822 writes a file when given savePath. */
 export const WRITING_TOOLS = new Set([
+  // Presses the confirm button of a code-free confirmation window (skipCode).
+  "answer-pending-confirmation",
   "get-message-rfc822",
   "create-draft",
   "update-saved-draft",

@@ -26,6 +26,8 @@ export interface OperationDetails {
   summary?: string;
   /** A Mail draft backs this send and can be opened from the window. */
   draftAvailable?: boolean;
+  /** The user skipped the code in the conversation: the window has only a confirm button. */
+  skipCode?: boolean;
   imagePath?: string;
   imageCaption?: string;
   /** Temporary files to remove once the dialog is closed. */
