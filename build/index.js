@@ -111793,13 +111793,37 @@ async function settleNewDraft(before, settleMs = 3e3) {
   for (const extra of rest) await deleteDraft(extra.id);
   return keep;
 }
-async function deleteDraftCopies(snapshot) {
+async function closeDraftWindows(subject) {
+  await runMail(
+    [
+      "on run argv",
+      'tell application "Mail"',
+      "  repeat with om in (every outgoing message whose subject is (item 1 of argv))",
+      "    close om saving no",
+      "  end repeat",
+      "end tell",
+      "end run"
+    ],
+    [subject]
+  );
+}
+async function deleteMatching(snapshot) {
   let ok = true;
   if (await readDraft(snapshot.id) && !await deleteDraft(snapshot.id)) ok = false;
   for (const copy of await draftsWithSubject(snapshot.subject)) {
     if (sameContent(copy, snapshot) && !await deleteDraft(copy.id)) ok = false;
   }
   return ok;
+}
+async function deleteDraftCopies(snapshot, sweepAfterMs = 2500) {
+  await closeDraftWindows(snapshot.subject).catch(() => {
+  });
+  const first = await deleteMatching(snapshot);
+  await sleep2(sweepAfterMs);
+  await closeDraftWindows(snapshot.subject).catch(() => {
+  });
+  const second = await deleteMatching(snapshot);
+  return first && second;
 }
 
 // src/index.ts

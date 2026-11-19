@@ -271,12 +271,44 @@ export async function settleNewDraft(
   return keep;
 }
 
-/** Deletes the draft and any other copy with the same content; false if one could not be. */
-export async function deleteDraftCopies(snapshot: DraftSnapshot): Promise<boolean> {
+/** Closes open compose windows with this subject without saving; they would re-save the draft. */
+export async function closeDraftWindows(subject: string): Promise<void> {
+  await runMail(
+    [
+      "on run argv",
+      'tell application "Mail"',
+      "  repeat with om in (every outgoing message whose subject is (item 1 of argv))",
+      "    close om saving no",
+      "  end repeat",
+      "end tell",
+      "end run",
+    ],
+    [subject]
+  );
+}
+
+async function deleteMatching(snapshot: DraftSnapshot): Promise<boolean> {
   let ok = true;
   if ((await readDraft(snapshot.id)) && !(await deleteDraft(snapshot.id))) ok = false;
   for (const copy of await draftsWithSubject(snapshot.subject)) {
     if (sameContent(copy, snapshot) && !(await deleteDraft(copy.id))) ok = false;
   }
   return ok;
+}
+
+/**
+ * After a send: closes the draft's open compose window (which would save it again),
+ * deletes every copy with the same content, and sweeps once more for a late re-save.
+ * Resolves false if a copy could not be deleted.
+ */
+export async function deleteDraftCopies(
+  snapshot: DraftSnapshot,
+  sweepAfterMs = 2500
+): Promise<boolean> {
+  await closeDraftWindows(snapshot.subject).catch(() => {});
+  const first = await deleteMatching(snapshot);
+  await sleep(sweepAfterMs);
+  await closeDraftWindows(snapshot.subject).catch(() => {});
+  const second = await deleteMatching(snapshot);
+  return first && second;
 }
