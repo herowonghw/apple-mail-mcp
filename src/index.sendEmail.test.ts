@@ -22,6 +22,15 @@ vi.mock("@/services/fileConfig.js", () => ({
   loadFileConfig: vi.fn(),
   fileConfigPath: () => "/nonexistent/apple-mail-mcp-test-config.json",
 }));
+// The human confirmation gate has its own tests; here the handler runs as approved.
+vi.mock("@/utils/confirmationGate.js", async (original) => ({
+  ...(await original<typeof import("@/utils/confirmationGate.js")>()),
+  ConfirmationGate: class {
+    async check() {
+      return null;
+    }
+  },
+}));
 vi.mock("@/tools/resourcesAndPrompts.js", () => ({ registerResourcesAndPrompts: vi.fn() }));
 vi.mock("@/services/appleMailManager.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/services/appleMailManager.js")>()),

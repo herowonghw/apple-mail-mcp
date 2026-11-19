@@ -33,11 +33,14 @@ import {
 import type { AttachmentInput } from "@/types.js";
 import { SETUP_GUIDE_URL } from "@/utils/docsUrls.js";
 import { TOOL_MODE_ENV, isToolAllowed, parseToolMode } from "@/utils/toolMode.js";
+import { buildPreview, macDialogPrompt, type HumanPrompt } from "@/utils/confirmationGate.js";
 
 /** sysexits.h codes used so callers can distinguish failure modes. */
 export const EX_USAGE = 64;
 export const EX_NOINPUT = 66;
 export const EX_CONFIG = 78;
+/** The person declined (or did not answer) the confirmation dialog; nothing was sent. */
+export const EX_DECLINED = 4;
 /** Some recipients accepted the message; do not automatically retry the full command. */
 export const EX_PARTIAL = 2;
 /** The provider may have accepted the message; verification is required before retrying. */
@@ -78,6 +81,8 @@ export interface CliDeps {
   stdout?: (line: string) => void;
   stderr?: (line: string) => void;
   env?: NodeJS.ProcessEnv;
+  /** The human confirmation dialog shown before sending. */
+  confirm?: HumanPrompt;
 }
 
 /**
@@ -94,6 +99,7 @@ export async function runCli(argv: string[], deps: CliDeps = {}): Promise<number
   const out = deps.stdout ?? ((l: string) => console.log(l));
   const err = deps.stderr ?? ((l: string) => console.error(l));
   const env = deps.env ?? process.env;
+  const confirm = deps.confirm ?? macDialogPrompt;
 
   let values: {
     from?: string;
@@ -183,6 +189,25 @@ export async function runCli(argv: string[], deps: CliDeps = {}): Promise<number
   const attachments: AttachmentInput[] | undefined = values.attach?.length
     ? values.attach
     : undefined;
+
+  // Same human gate as the MCP send tools: a person types a code into a macOS dialog.
+  const outcome = await confirm(
+    "apple-mail-send：确认发送",
+    buildPreview("apple-mail-send", {
+      from: values.from,
+      to: values.to,
+      cc: values.cc,
+      bcc: values.bcc,
+      replyTo: values["reply-to"],
+      subject: values.subject,
+      body,
+      attachments,
+    })
+  );
+  if (outcome !== "approved") {
+    err(`Not sent: the confirmation dialog was ${outcome}.`);
+    return EX_DECLINED;
+  }
 
   const result = await Promise.resolve()
     .then(() =>

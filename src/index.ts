@@ -165,6 +165,14 @@ import { isOrphaned } from "@/utils/orphan.js";
 import { withJsonSchema2020_12 } from "@/utils/jsonSchemaDialect.js";
 import { isToolAllowed, resolveToolMode, withSafetyAnnotations } from "@/utils/toolMode.js";
 import {
+  CONFIRMATION_NOTE,
+  CONFIRMATION_TOKEN_PARAM,
+  CONFIRMED_TOOLS,
+  ConfirmationGate,
+  confirmationTokenSchema,
+  stripToken,
+} from "@/utils/confirmationGate.js";
+import {
   writeDestructiveAudit,
   reconciliationWarnings,
   type DestructiveOpReport,
@@ -570,6 +578,24 @@ function registerTool<
     const token = REFERENCES_SCHEMA.unwrap().element;
     z.globalRegistry.add(token, { ...token.meta(), description: IN_REPLY_TO_SCHEMA.description });
   }
+  // Sending and deleting tools act only after the user approves twice: once in
+  // the conversation, once by typing a code into a macOS dialog (confirmationGate.ts).
+  if (CONFIRMED_TOOLS.has(name)) {
+    config = {
+      ...config,
+      description: `${config.description ?? ""}${CONFIRMATION_NOTE}`,
+      inputSchema: {
+        ...config.inputSchema,
+        [CONFIRMATION_TOKEN_PARAM]: confirmationTokenSchema,
+      } as unknown as InputArgs,
+    };
+    const run = cb as unknown as (args: Record<string, unknown>, extra: unknown) => unknown;
+    cb = (async (args: Record<string, unknown>, extra: unknown) => {
+      const refused = await confirmationGate.check(name, args);
+      if (refused) return refused;
+      return run(stripToken(args), extra);
+    }) as unknown as ToolCallback<InputArgs>;
+  }
   const tool = registerToolWithContracts(
     server,
     name,
@@ -583,6 +609,8 @@ function registerTool<
   if (!isToolAllowed(name, toolMode)) tool.disable();
   return tool;
 }
+
+const confirmationGate = new ConfirmationGate();
 
 /** Parsed once, after loadFileConfig() has filled the environment. */
 const toolMode = (() => {

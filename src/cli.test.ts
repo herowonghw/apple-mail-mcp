@@ -5,7 +5,7 @@
  * captured stdout/stderr) so nothing touches the network, Keychain, or disk.
  */
 import { describe, it, expect, vi } from "vitest";
-import { runCli, EX_USAGE, EX_NOINPUT, EX_CONFIG, type CliDeps } from "./cli.js";
+import { runCli, EX_USAGE, EX_NOINPUT, EX_CONFIG, EX_DECLINED, type CliDeps } from "./cli.js";
 import type { SmtpConfig } from "./smtpMailer.js";
 import nodemailer from "nodemailer";
 import { sendViaSmtp } from "@/services/smtpMailer.js";
@@ -37,6 +37,7 @@ function makeDeps(over: Partial<CliDeps> = {}): {
     stdout: (l) => out.push(l),
     stderr: (l) => err.push(l),
     env: {},
+    confirm: async () => "approved",
     ...over,
   };
   return { deps, send, out, err };
@@ -183,6 +184,13 @@ describe("runCli", () => {
     const { deps, send } = makeDeps({ env: { APPLE_MAIL_MCP_MODE: "full" } });
     expect(await runCli(REQUIRED, deps)).toBe(0);
     expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not send when the confirmation dialog is declined", async () => {
+    const { deps, send, err } = makeDeps({ confirm: async () => "cancelled" });
+    expect(await runCli(REQUIRED, deps)).toBe(EX_DECLINED);
+    expect(send).not.toHaveBeenCalled();
+    expect(err.join("\n")).toContain("cancelled");
   });
 
   it("refuses an unknown mode instead of sending", async () => {

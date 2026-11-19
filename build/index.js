@@ -44295,7 +44295,7 @@ var require_tools2 = __commonJS({
     var libmime = require_libmime();
     var { resolveCharset } = require_charsets2();
     var { compiler } = require_imap_handler();
-    var { createHash: createHash2 } = __require("crypto");
+    var { createHash: createHash3 } = __require("crypto");
     var { JPDecoder } = require_jp_decoder();
     var iconv = require_lib();
     var FLAG_COLORS = ["red", "orange", "yellow", "green", "blue", "purple", "grey"];
@@ -44925,7 +44925,7 @@ var require_tools2 = __commonJS({
             } catch {
             }
           }
-          map3.id = map3.emailId || createHash2("md5").update([path3, mailbox.uidValidity?.toString() || "", map3.uid.toString()].join(":")).digest("hex");
+          map3.id = map3.emailId || createHash3("md5").update([path3, mailbox.uidValidity?.toString() || "", map3.uid.toString()].join(":")).digest("hex");
         }
         if (map3.flags) {
           let flagColor = tools.getFlagColor(map3.flags);
@@ -66341,8 +66341,8 @@ function canonicalRoots(requested) {
   const resolved = [];
   for (const root of requested) {
     try {
-      const canonical = canonicalize(resolve3(root));
-      if (canonical !== sep && !resolved.includes(canonical)) resolved.push(canonical);
+      const canonical2 = canonicalize(resolve3(root));
+      if (canonical2 !== sep && !resolved.includes(canonical2)) resolved.push(canonical2);
     } catch {
     }
   }
@@ -66362,14 +66362,14 @@ function resolveAttachmentReadPath(filePath, env = process.env) {
   if (!isAbsolute(filePath)) {
     throw new Error(`Attachment path must be absolute: "${filePath}"`);
   }
-  let canonical;
+  let canonical2;
   try {
-    canonical = canonicalize(filePath);
+    canonical2 = canonicalize(filePath);
   } catch {
     throw new Error(`Attachment file not found: "${filePath}"`);
   }
   try {
-    if (!statSync(canonical).isFile()) {
+    if (!statSync(canonical2).isFile()) {
       throw new Error(`Attachment path is not a regular file: "${filePath}"`);
     }
   } catch (error63) {
@@ -66378,18 +66378,18 @@ function resolveAttachmentReadPath(filePath, env = process.env) {
   }
   const explicit = explicitRoots(env);
   const exempt = [...explicit, ...canonicalTmpdir()];
-  if (isProtectedPath(canonical, exempt) || isProtectedPath(resolve3(filePath), exempt)) {
+  if (isProtectedPath(canonical2, exempt) || isProtectedPath(resolve3(filePath), exempt)) {
     throw new Error(
       `Attachment path is in a protected location: "${filePath}". Hidden files, credential locations and user Library folders (except iCloud Drive and CloudStorage) cannot be sent as attachments unless ${ATTACHMENT_READ_ROOTS_ENV} names a root for them.`
     );
   }
   const roots = [...canonicalRoots(DEFAULT_ATTACHMENT_READ_ROOTS), ...explicit];
-  if (!roots.some((root) => isWithinRoot(canonical, root))) {
+  if (!roots.some((root) => isWithinRoot(canonical2, root))) {
     throw new Error(
       `Attachment path is outside the allowed read roots: "${filePath}". Use an ordinary home-directory, /Volumes, or temporary path, or configure ${ATTACHMENT_READ_ROOTS_ENV} for an additional explicit root.`
     );
   }
-  return canonical;
+  return canonical2;
 }
 function attachmentSaveRoots(env = process.env) {
   return [
@@ -107727,8 +107727,8 @@ ${this.errorEmit("              ")}
       void 0
     );
     if (output2 === null) {
-      const refusal = this.consumeLastMessageLookupError();
-      if (refusal) throw new Error(refusal);
+      const refusal2 = this.consumeLastMessageLookupError();
+      if (refusal2) throw new Error(refusal2);
     }
     if (output2?.startsWith(ATTACHMENTS_MARKER) && output2.length > ATTACHMENTS_MARKER.length) {
       const items = output2.slice(ATTACHMENTS_MARKER.length).split(RECORD_SEP2);
@@ -110952,6 +110952,174 @@ function withSafetyAnnotations(name2, annotations) {
   return annotations;
 }
 
+// src/utils/confirmationGate.ts
+import { createHash as createHash2, randomBytes } from "node:crypto";
+import { execFile } from "node:child_process";
+var CONFIRMATION_TOKEN_PARAM = "confirmationToken";
+var CONFIRMED_TOOLS = /* @__PURE__ */ new Set([
+  ...SENDING_TOOLS,
+  "delete-message",
+  "batch-delete-messages",
+  "move-message",
+  "batch-move-messages",
+  "delete-mailbox",
+  "delete-smart-mailbox",
+  "create-rule",
+  "delete-rule",
+  "delete-template",
+  "set-account-settings"
+]);
+function requiresConfirmation(tool, args) {
+  if (!CONFIRMED_TOOLS.has(tool)) return false;
+  if ((tool === "reply-to-message" || tool === "forward-message") && args.send === false) {
+    return false;
+  }
+  return true;
+}
+var confirmationTokenSchema = external_exports.string().optional().describe(
+  "Leave empty on the first call. The server then returns a preview and a token instead of acting. Show the preview to the user; only after the user explicitly approves, call again with identical arguments plus this token. The user must then also type a 6-digit code into a macOS dialog before anything happens."
+);
+var CONFIRMATION_NOTE = "\nConfirmation: this tool never acts on the first call. It returns a preview and a confirmationToken; ask the user to approve that preview, then repeat the call with the same arguments and the token. The user must also enter a 6-digit code in a macOS dialog.";
+var TOKEN_TTL_MS = 10 * 60 * 1e3;
+var MAX_PREVIEW_CHARS = 1500;
+function canonical(value) {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value).filter(([, v]) => v !== void 0).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
+    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`).join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+function stripToken(args) {
+  const rest = { ...args };
+  delete rest[CONFIRMATION_TOKEN_PARAM];
+  return rest;
+}
+function fingerprint(tool, args) {
+  return createHash2("sha256").update(`${tool}
+${canonical(args)}`).digest("hex");
+}
+function buildPreview(tool, args) {
+  const shown = JSON.stringify(
+    args,
+    (key, value) => {
+      if (key === "contentBase64" && typeof value === "string") {
+        return `<base64, ~${Math.round(value.length * 3 / 4 / 1024)} KiB>`;
+      }
+      if (typeof value === "string" && value.length > 400) {
+        return `${value.slice(0, 400)}\u2026 (${value.length} chars)`;
+      }
+      if (Array.isArray(value) && value.length > 20) {
+        return [...value.slice(0, 20), `\u2026 (+${value.length - 20} more)`];
+      }
+      return value;
+    },
+    2
+  );
+  const text = `Tool: ${tool}
+${shown}`;
+  return text.length > MAX_PREVIEW_CHARS ? `${text.slice(0, MAX_PREVIEW_CHARS)}
+\u2026` : text;
+}
+var DIALOG_SCRIPT = [
+  "on run argv",
+  'set r to display dialog (item 2 of argv) with title (item 1 of argv) default answer "" buttons {"\u53D6\u6D88", "\u786E\u8BA4\u6267\u884C"} default button "\u786E\u8BA4\u6267\u884C" cancel button "\u53D6\u6D88" with icon caution giving up after 180',
+  'if gave up of r then return "GAVEUP"',
+  'return "ANSWER:" & text returned of r',
+  "end run"
+];
+function runDialog(title, text) {
+  const args = DIALOG_SCRIPT.flatMap((line) => ["-e", line]);
+  return new Promise((resolve5) => {
+    execFile("osascript", [...args, title, text], { timeout: 2e5 }, (error63, stdout, stderr) => {
+      if (error63) {
+        resolve5(String(stderr).includes("-128") ? "cancelled" : "error");
+        return;
+      }
+      const out = String(stdout).trim();
+      if (out === "GAVEUP") return resolve5("timeout");
+      const answer = out.startsWith("ANSWER:") ? out.slice("ANSWER:".length).trim() : "";
+      resolve5(/^\d{6}$/.test(answer) ? "approved" : "retry");
+    });
+  });
+}
+var macDialogPrompt = async (title, text) => {
+  let body = `${text}
+
+\u8BF7\u8F93\u5165\u4EFB\u610F 6 \u4F4D\u6570\u5B57\u540E\u70B9\u201C\u786E\u8BA4\u6267\u884C\u201D\uFF1B\u70B9\u201C\u53D6\u6D88\u201D\u5219\u4E0D\u6267\u884C\u3002`;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const outcome = await runDialog(title, body);
+    if (outcome !== "retry") return outcome;
+    body = `\u26A0\uFE0F \u9700\u8981\u8F93\u5165 6 \u4F4D\u6570\u5B57\u3002
+
+${body}`;
+  }
+  return "cancelled";
+};
+function refusal(text) {
+  return { content: [{ type: "text", text }], isError: true };
+}
+var ConfirmationGate = class {
+  constructor(prompt = macDialogPrompt, now = Date.now) {
+    this.prompt = prompt;
+    this.now = now;
+  }
+  prompt;
+  now;
+  pending = /* @__PURE__ */ new Map();
+  queue = Promise.resolve();
+  /**
+   * Returns null when the call may proceed, or the result to send back instead.
+   * `args` still carries the token; the caller strips it before running the tool.
+   */
+  async check(tool, args) {
+    if (!requiresConfirmation(tool, args)) return null;
+    this.expire();
+    const rest = stripToken(args);
+    const print = fingerprint(tool, rest);
+    const token = args[CONFIRMATION_TOKEN_PARAM];
+    if (typeof token !== "string" || token === "") {
+      const issued = randomBytes(9).toString("base64url");
+      const preview = buildPreview(tool, rest);
+      this.pending.set(issued, {
+        tool,
+        fingerprint: print,
+        preview,
+        expiresAt: this.now() + TOKEN_TTL_MS
+      });
+      return refusal(
+        `NOT EXECUTED \u2014 confirmation required.
+
+${preview}
+
+Show this preview to the user and ask whether to proceed. Only if the user explicitly approves, call ${tool} again with exactly the same arguments plus ${CONFIRMATION_TOKEN_PARAM}: "${issued}" (valid 10 minutes, single use). The user will then have to type a 6-digit code into a macOS dialog. If the user declines, do not call again.`
+      );
+    }
+    const entry = this.pending.get(token);
+    this.pending.delete(token);
+    if (!entry || entry.tool !== tool || entry.fingerprint !== print) {
+      return refusal(
+        `NOT EXECUTED \u2014 ${CONFIRMATION_TOKEN_PARAM} is unknown, expired, already used, or the arguments changed since it was issued. Call ${tool} again without a token to get a new preview, and get the user's approval again.`
+      );
+    }
+    const outcome = await (this.queue = this.queue.then(
+      () => this.prompt(`Apple Mail MCP\uFF1A\u786E\u8BA4 ${tool}`, entry.preview),
+      () => this.prompt(`Apple Mail MCP\uFF1A\u786E\u8BA4 ${tool}`, entry.preview)
+    ));
+    if (outcome === "approved") return null;
+    const why = outcome === "timeout" ? "the confirmation dialog timed out" : outcome === "error" ? "the confirmation dialog could not be shown" : "the user cancelled in the confirmation dialog";
+    return refusal(
+      `NOT EXECUTED \u2014 ${why}. Nothing was sent or changed. Do not retry unless the user asks.`
+    );
+  }
+  expire() {
+    const t = this.now();
+    for (const [token, entry] of this.pending) {
+      if (entry.expiresAt <= t) this.pending.delete(token);
+    }
+  }
+};
+
 // src/index.ts
 init_auditLog();
 if (process.argv.includes(BODY_INDEX_BUILDER_ARG) && process.send) {
@@ -111157,6 +111325,22 @@ function registerTool(name2, config2, cb) {
     const token = REFERENCES_SCHEMA.unwrap().element;
     external_exports.globalRegistry.add(token, { ...token.meta(), description: IN_REPLY_TO_SCHEMA.description });
   }
+  if (CONFIRMED_TOOLS.has(name2)) {
+    config2 = {
+      ...config2,
+      description: `${config2.description ?? ""}${CONFIRMATION_NOTE}`,
+      inputSchema: {
+        ...config2.inputSchema,
+        [CONFIRMATION_TOKEN_PARAM]: confirmationTokenSchema
+      }
+    };
+    const run2 = cb;
+    cb = (async (args, extra) => {
+      const refused = await confirmationGate.check(name2, args);
+      if (refused) return refused;
+      return run2(stripToken(args), extra);
+    });
+  }
   const tool = registerToolWithContracts(
     server,
     name2,
@@ -111169,6 +111353,7 @@ function registerTool(name2, config2, cb) {
   if (!isToolAllowed(name2, toolMode)) tool.disable();
   return tool;
 }
+var confirmationGate = new ConfirmationGate();
 var toolMode = (() => {
   const config2 = readConfigText();
   return resolveToolMode(process.env, config2.text, config2.unreadable);
