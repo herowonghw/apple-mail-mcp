@@ -49,6 +49,8 @@ describe("describeOperation", () => {
       { withImage: true }
     );
     expect(d.action).toBe("即将发送邮件");
+    expect(d.kind).toBe("send");
+    expect(d.confirmLabel).toBe("确认发送");
     expect(field(d, "收件人")).toBe("a@example.com, b@example.com");
     expect(field(d, "抄送")).toBe("c@example.com");
     expect(field(d, "主题")).toBe("Report");
@@ -114,6 +116,7 @@ describe("describeOperation", () => {
     });
     const d = await describeOperation("delete-message", { id: "7" }, lookup, { withImage: true });
     expect(d.action).toBe("即将删除邮件");
+    expect(d.confirmLabel).toBe("确认删除");
     expect(field(d, "主题")).toBe("Invoice");
     expect(d.summary).toBe("Your invoice");
     expect(d.imagePath).toBe(image);

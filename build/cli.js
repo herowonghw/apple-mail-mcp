@@ -63051,7 +63051,7 @@ async function describeOperation(tool, args, lookup, options) {
     const out = outgoingAttachments(value);
     if (out.field) fields.push(out.field);
     if (out.image?.temp) tempFiles.push(out.image.temp);
-    return out.image && options.withImage ? { imagePath: out.image.path, imageCaption: `\u56FE\u7247\u9644\u4EF6\u9884\u89C8\uFF1A${out.image.name}` } : {};
+    return out.image && options.withImage ? { imagePath: out.image.path, imageCaption: out.image.name } : {};
   };
   const readOne = async (id, account, mailbox, body = true) => {
     const info = await lookup(id, {
@@ -63063,7 +63063,7 @@ async function describeOperation(tool, args, lookup, options) {
     if (info.image) tempFiles.push(info.image.path);
     return info;
   };
-  const imageOf = (info) => info.image ? { imagePath: info.image.path, imageCaption: `\u90AE\u4EF6\u56FE\u7247\u9884\u89C8\uFF1A${info.image.name}` } : {};
+  const imageOf = (info) => info.image ? { imagePath: info.image.path, imageCaption: info.image.name } : {};
   switch (tool) {
     case "send-email": {
       push(fields, "\u53D1\u4EF6\u8D26\u53F7", args.account ?? "\u9ED8\u8BA4\u8D26\u53F7");
@@ -63074,6 +63074,8 @@ async function describeOperation(tool, args, lookup, options) {
       const image = withOutgoing(args.attachments);
       return done({
         action: "\u5373\u5C06\u53D1\u9001\u90AE\u4EF6",
+        kind: "send",
+        confirmLabel: "\u786E\u8BA4\u53D1\u9001",
         question: "\u786E\u5B9A\u8981\u53D1\u9001\u4E0B\u9762\u8FD9\u5C01\u90AE\u4EF6\u5417\uFF1F\u53D1\u51FA\u540E\u65E0\u6CD5\u64A4\u56DE\u3002",
         summary: summarize(args.body),
         ...image
@@ -63089,6 +63091,8 @@ async function describeOperation(tool, args, lookup, options) {
       push(fields, "\u4E3B\u9898\u6A21\u677F", args.subject);
       return done({
         action: `\u5373\u5C06\u7FA4\u53D1 ${recipients.length} \u5C01\u90AE\u4EF6`,
+        kind: "send",
+        confirmLabel: "\u786E\u8BA4\u7FA4\u53D1",
         question: `\u786E\u5B9A\u8981\u7ED9 ${recipients.length} \u4F4D\u6536\u4EF6\u4EBA\u9010\u4E2A\u53D1\u9001\u4E0B\u9762\u7684\u90AE\u4EF6\u5417\uFF1F\u53D1\u51FA\u540E\u65E0\u6CD5\u64A4\u56DE\u3002`,
         summary: summarize(args.body)
       });
@@ -63104,6 +63108,8 @@ async function describeOperation(tool, args, lookup, options) {
       const image = withOutgoing(args.attachments);
       return done({
         action: all ? "\u5373\u5C06\u56DE\u590D\u5168\u90E8" : "\u5373\u5C06\u56DE\u590D\u90AE\u4EF6",
+        kind: all ? "replyAll" : "reply",
+        confirmLabel: all ? "\u786E\u8BA4\u56DE\u590D\u5168\u90E8" : "\u786E\u8BA4\u56DE\u590D",
         question: all ? "\u786E\u5B9A\u8981\u5BF9\u4E0B\u9762\u8FD9\u5C01\u90AE\u4EF6\u201C\u56DE\u590D\u5168\u90E8\u201D\u5417\uFF1F\u6240\u6709\u539F\u6536\u4EF6\u4EBA\u90FD\u4F1A\u6536\u5230\uFF0C\u53D1\u51FA\u540E\u65E0\u6CD5\u64A4\u56DE\u3002" : "\u786E\u5B9A\u8981\u56DE\u590D\u4E0B\u9762\u8FD9\u5C01\u90AE\u4EF6\u5417\uFF1F\u53D1\u51FA\u540E\u65E0\u6CD5\u64A4\u56DE\u3002",
         summary: summarize(args.body),
         ...image
@@ -63116,6 +63122,8 @@ async function describeOperation(tool, args, lookup, options) {
       const image = withOutgoing(args.attachments);
       return done({
         action: "\u5373\u5C06\u8F6C\u53D1\u90AE\u4EF6",
+        kind: "forward",
+        confirmLabel: "\u786E\u8BA4\u8F6C\u53D1",
         question: "\u786E\u5B9A\u8981\u628A\u4E0B\u9762\u8FD9\u5C01\u90AE\u4EF6\u8F6C\u53D1\u51FA\u53BB\u5417\uFF1F\u53D1\u51FA\u540E\u65E0\u6CD5\u64A4\u56DE\u3002",
         summary: summarize(args.body || info.body),
         ...image.imagePath ? image : imageOf(info)
@@ -63129,6 +63137,8 @@ async function describeOperation(tool, args, lookup, options) {
       if (moving) fields.push({ label: "\u79FB\u52A8\u5230", value: where(args, "mailbox", "account") });
       return done({
         action: moving ? "\u5373\u5C06\u79FB\u52A8\u90AE\u4EF6" : "\u5373\u5C06\u5220\u9664\u90AE\u4EF6",
+        kind: moving ? "move" : "delete",
+        confirmLabel: moving ? "\u786E\u8BA4\u79FB\u52A8" : "\u786E\u8BA4\u5220\u9664",
         question: moving ? "\u786E\u5B9A\u8981\u628A\u4E0B\u9762\u8FD9\u5C01\u90AE\u4EF6\u79FB\u52A8\u5230\u5176\u4ED6\u90AE\u7BB1\u5417\uFF1F" : "\u786E\u5B9A\u8981\u5220\u9664\u4E0B\u9762\u8FD9\u5C01\u90AE\u4EF6\u5417\uFF1F\u90AE\u4EF6\u4F1A\u79FB\u5230\u5E9F\u7EB8\u7BD3\u3002",
         summary: summarize(info.body),
         ...imageOf(info)
@@ -63158,6 +63168,8 @@ async function describeOperation(tool, args, lookup, options) {
       if (moving) fields.push({ label: "\u79FB\u52A8\u5230", value: where(args, "mailbox", "account") });
       return done({
         action: moving ? `\u5373\u5C06\u6279\u91CF\u79FB\u52A8 ${ids.length} \u5C01\u90AE\u4EF6` : `\u5373\u5C06\u6279\u91CF\u5220\u9664 ${ids.length} \u5C01\u90AE\u4EF6`,
+        kind: moving ? "move" : "delete",
+        confirmLabel: moving ? "\u786E\u8BA4\u79FB\u52A8" : "\u786E\u8BA4\u5220\u9664",
         question: moving ? `\u786E\u5B9A\u8981\u79FB\u52A8\u8FD9 ${ids.length} \u5C01\u90AE\u4EF6\u5417\uFF1F` : `\u786E\u5B9A\u8981\u5220\u9664\u8FD9 ${ids.length} \u5C01\u90AE\u4EF6\u5417\uFF1F\u90AE\u4EF6\u4F1A\u79FB\u5230\u5E9F\u7EB8\u7BD3\u3002`
       });
     }
@@ -63166,18 +63178,32 @@ async function describeOperation(tool, args, lookup, options) {
       push(fields, "\u8D26\u53F7", args.account);
       return done({
         action: "\u5373\u5C06\u5220\u9664\u90AE\u7BB1\u6587\u4EF6\u5939",
+        kind: "delete",
+        confirmLabel: "\u786E\u8BA4\u5220\u9664",
         question: "\u786E\u5B9A\u8981\u5220\u9664\u8FD9\u4E2A\u90AE\u7BB1\u6587\u4EF6\u5939\u5417\uFF1F\u91CC\u9762\u7684\u90AE\u4EF6\u4F1A\u4E00\u8D77\u5220\u9664\u3002"
       });
     case "delete-smart-mailbox":
       push(fields, "\u667A\u80FD\u90AE\u7BB1", args.name);
-      return done({ action: "\u5373\u5C06\u5220\u9664\u667A\u80FD\u90AE\u7BB1", question: "\u786E\u5B9A\u8981\u5220\u9664\u8FD9\u4E2A\u667A\u80FD\u90AE\u7BB1\u5417\uFF1F" });
+      return done({
+        action: "\u5373\u5C06\u5220\u9664\u667A\u80FD\u90AE\u7BB1",
+        kind: "delete",
+        confirmLabel: "\u786E\u8BA4\u5220\u9664",
+        question: "\u786E\u5B9A\u8981\u5220\u9664\u8FD9\u4E2A\u667A\u80FD\u90AE\u7BB1\u5417\uFF1F"
+      });
     case "delete-rule":
       push(fields, "\u89C4\u5219", args.name);
-      return done({ action: "\u5373\u5C06\u5220\u9664\u90AE\u4EF6\u89C4\u5219", question: "\u786E\u5B9A\u8981\u5220\u9664\u8FD9\u6761\u89C4\u5219\u5417\uFF1F" });
+      return done({
+        action: "\u5373\u5C06\u5220\u9664\u90AE\u4EF6\u89C4\u5219",
+        kind: "delete",
+        confirmLabel: "\u786E\u8BA4\u5220\u9664",
+        question: "\u786E\u5B9A\u8981\u5220\u9664\u8FD9\u6761\u89C4\u5219\u5417\uFF1F"
+      });
     case "enable-rule":
       push(fields, "\u89C4\u5219", args.name);
       return done({
         action: "\u5373\u5C06\u542F\u7528\u90AE\u4EF6\u89C4\u5219",
+        kind: "rule",
+        confirmLabel: "\u786E\u8BA4\u542F\u7528",
         question: "\u786E\u5B9A\u8981\u542F\u7528\u8FD9\u6761\u89C4\u5219\u5417\uFF1F\u89C4\u5219\u53EF\u80FD\u4F1A\u81EA\u52A8\u8F6C\u53D1\u6216\u56DE\u590D\u90AE\u4EF6\u3002"
       });
     case "create-rule":
@@ -63186,11 +63212,18 @@ async function describeOperation(tool, args, lookup, options) {
       fields.push({ label: "\u52A8\u4F5C", value: JSON.stringify(args.actions ?? []) });
       return done({
         action: "\u5373\u5C06\u521B\u5EFA\u90AE\u4EF6\u89C4\u5219",
+        kind: "rule",
+        confirmLabel: "\u786E\u8BA4\u521B\u5EFA",
         question: "\u786E\u5B9A\u8981\u521B\u5EFA\u8FD9\u6761\u89C4\u5219\u5417\uFF1F\u89C4\u5219\u53EF\u80FD\u4F1A\u81EA\u52A8\u8F6C\u53D1\u3001\u56DE\u590D\u6216\u5220\u9664\u90AE\u4EF6\u3002"
       });
     case "delete-template":
       push(fields, "\u6A21\u677F", args.id);
-      return done({ action: "\u5373\u5C06\u5220\u9664\u90AE\u4EF6\u6A21\u677F", question: "\u786E\u5B9A\u8981\u5220\u9664\u8FD9\u4E2A\u6A21\u677F\u5417\uFF1F" });
+      return done({
+        action: "\u5373\u5C06\u5220\u9664\u90AE\u4EF6\u6A21\u677F",
+        kind: "delete",
+        confirmLabel: "\u786E\u8BA4\u5220\u9664",
+        question: "\u786E\u5B9A\u8981\u5220\u9664\u8FD9\u4E2A\u6A21\u677F\u5417\uFF1F"
+      });
     case "set-account-settings": {
       push(fields, "\u8D26\u53F7", args.account);
       for (const [key, value] of Object.entries(args)) {
@@ -63198,6 +63231,8 @@ async function describeOperation(tool, args, lookup, options) {
       }
       return done({
         action: "\u5373\u5C06\u4FEE\u6539\u8D26\u53F7\u8BBE\u7F6E",
+        kind: "settings",
+        confirmLabel: "\u786E\u8BA4\u4FEE\u6539",
         question: "\u786E\u5B9A\u8981\u4FEE\u6539\u8FD9\u4E2A\u90AE\u4EF6\u8D26\u53F7\u7684\u8BBE\u7F6E\u5417\uFF1F\u505C\u7528\u8D26\u53F7\u4F1A\u505C\u6B62\u6536\u53D1\u90AE\u4EF6\u3002"
       });
     }

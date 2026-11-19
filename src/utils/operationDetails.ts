@@ -15,6 +15,10 @@ export interface DialogField {
 export interface OperationDetails {
   /** Red headline, e.g. "即将发送邮件". */
   action: string;
+  /** Picks the icon: send, reply, replyAll, forward, delete, move, rule, settings. */
+  kind?: string;
+  /** Label of the confirm button, e.g. "确认发送". */
+  confirmLabel?: string;
   question: string;
   fields: DialogField[];
   summary?: string;
@@ -156,7 +160,7 @@ export async function describeOperation(
     if (out.field) fields.push(out.field);
     if (out.image?.temp) tempFiles.push(out.image.temp);
     return out.image && options.withImage
-      ? { imagePath: out.image.path, imageCaption: `图片附件预览：${out.image.name}` }
+      ? { imagePath: out.image.path, imageCaption: out.image.name }
       : {};
   };
   const readOne = async (id: string, account?: unknown, mailbox?: unknown, body = true) => {
@@ -170,9 +174,7 @@ export async function describeOperation(
     return info;
   };
   const imageOf = (info: MessageInfo) =>
-    info.image
-      ? { imagePath: info.image.path, imageCaption: `邮件图片预览：${info.image.name}` }
-      : {};
+    info.image ? { imagePath: info.image.path, imageCaption: info.image.name } : {};
 
   switch (tool) {
     case "send-email": {
@@ -184,6 +186,8 @@ export async function describeOperation(
       const image = withOutgoing(args.attachments);
       return done({
         action: "即将发送邮件",
+        kind: "send",
+        confirmLabel: "确认发送",
         question: "确定要发送下面这封邮件吗？发出后无法撤回。",
         summary: summarize(args.body as string),
         ...image,
@@ -203,6 +207,8 @@ export async function describeOperation(
       push(fields, "主题模板", args.subject);
       return done({
         action: `即将群发 ${recipients.length} 封邮件`,
+        kind: "send",
+        confirmLabel: "确认群发",
         question: `确定要给 ${recipients.length} 位收件人逐个发送下面的邮件吗？发出后无法撤回。`,
         summary: summarize(args.body as string),
       });
@@ -218,6 +224,8 @@ export async function describeOperation(
       const image = withOutgoing(args.attachments);
       return done({
         action: all ? "即将回复全部" : "即将回复邮件",
+        kind: all ? "replyAll" : "reply",
+        confirmLabel: all ? "确认回复全部" : "确认回复",
         question: all
           ? "确定要对下面这封邮件“回复全部”吗？所有原收件人都会收到，发出后无法撤回。"
           : "确定要回复下面这封邮件吗？发出后无法撤回。",
@@ -232,6 +240,8 @@ export async function describeOperation(
       const image = withOutgoing(args.attachments);
       return done({
         action: "即将转发邮件",
+        kind: "forward",
+        confirmLabel: "确认转发",
         question: "确定要把下面这封邮件转发出去吗？发出后无法撤回。",
         summary: summarize((args.body as string) || info.body),
         ...(image.imagePath ? image : imageOf(info)),
@@ -245,6 +255,8 @@ export async function describeOperation(
       if (moving) fields.push({ label: "移动到", value: where(args, "mailbox", "account") });
       return done({
         action: moving ? "即将移动邮件" : "即将删除邮件",
+        kind: moving ? "move" : "delete",
+        confirmLabel: moving ? "确认移动" : "确认删除",
         question: moving
           ? "确定要把下面这封邮件移动到其他邮箱吗？"
           : "确定要删除下面这封邮件吗？邮件会移到废纸篓。",
@@ -278,6 +290,8 @@ export async function describeOperation(
       if (moving) fields.push({ label: "移动到", value: where(args, "mailbox", "account") });
       return done({
         action: moving ? `即将批量移动 ${ids.length} 封邮件` : `即将批量删除 ${ids.length} 封邮件`,
+        kind: moving ? "move" : "delete",
+        confirmLabel: moving ? "确认移动" : "确认删除",
         question: moving
           ? `确定要移动这 ${ids.length} 封邮件吗？`
           : `确定要删除这 ${ids.length} 封邮件吗？邮件会移到废纸篓。`,
@@ -288,18 +302,32 @@ export async function describeOperation(
       push(fields, "账号", args.account);
       return done({
         action: "即将删除邮箱文件夹",
+        kind: "delete",
+        confirmLabel: "确认删除",
         question: "确定要删除这个邮箱文件夹吗？里面的邮件会一起删除。",
       });
     case "delete-smart-mailbox":
       push(fields, "智能邮箱", args.name);
-      return done({ action: "即将删除智能邮箱", question: "确定要删除这个智能邮箱吗？" });
+      return done({
+        action: "即将删除智能邮箱",
+        kind: "delete",
+        confirmLabel: "确认删除",
+        question: "确定要删除这个智能邮箱吗？",
+      });
     case "delete-rule":
       push(fields, "规则", args.name);
-      return done({ action: "即将删除邮件规则", question: "确定要删除这条规则吗？" });
+      return done({
+        action: "即将删除邮件规则",
+        kind: "delete",
+        confirmLabel: "确认删除",
+        question: "确定要删除这条规则吗？",
+      });
     case "enable-rule":
       push(fields, "规则", args.name);
       return done({
         action: "即将启用邮件规则",
+        kind: "rule",
+        confirmLabel: "确认启用",
         question: "确定要启用这条规则吗？规则可能会自动转发或回复邮件。",
       });
     case "create-rule":
@@ -308,11 +336,18 @@ export async function describeOperation(
       fields.push({ label: "动作", value: JSON.stringify(args.actions ?? []) });
       return done({
         action: "即将创建邮件规则",
+        kind: "rule",
+        confirmLabel: "确认创建",
         question: "确定要创建这条规则吗？规则可能会自动转发、回复或删除邮件。",
       });
     case "delete-template":
       push(fields, "模板", args.id);
-      return done({ action: "即将删除邮件模板", question: "确定要删除这个模板吗？" });
+      return done({
+        action: "即将删除邮件模板",
+        kind: "delete",
+        confirmLabel: "确认删除",
+        question: "确定要删除这个模板吗？",
+      });
     case "set-account-settings": {
       push(fields, "账号", args.account);
       for (const [key, value] of Object.entries(args)) {
@@ -320,6 +355,8 @@ export async function describeOperation(
       }
       return done({
         action: "即将修改账号设置",
+        kind: "settings",
+        confirmLabel: "确认修改",
         question: "确定要修改这个邮件账号的设置吗？停用账号会停止收发邮件。",
       });
     }
