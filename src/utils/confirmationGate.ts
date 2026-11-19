@@ -30,7 +30,7 @@ import {
   type MessageLookup,
   type Route,
 } from "@/utils/operationDetails.js";
-import type { DraftCheck, DraftSnapshot } from "@/utils/draftTracker.js";
+import type { ComposeState, DraftCheck, DraftSnapshot } from "@/utils/draftTracker.js";
 
 export type { HumanPrompt, PromptOutcome } from "@/utils/confirmDialog.js";
 
@@ -80,7 +80,12 @@ export interface DraftRef {
   snapshot: DraftSnapshot;
   createdAt: Date;
   route: Route;
+  /** The open Mail compose window holding the draft, when there is one. */
+  compose?: { outgoingId: string; approved: ComposeState };
 }
+
+/** The compose window no longer holds the approved message. */
+export class DraftEditedError extends Error {}
 
 /** Draft handling for sends; injected so the gate can be tested without Mail. */
 export interface DraftOps {
@@ -88,6 +93,11 @@ export interface DraftOps {
   prepare(tool: string, args: Record<string, unknown>): Promise<DraftRef | undefined>;
   check(draft: DraftRef): Promise<DraftCheck>;
   reveal(draft: DraftRef): Promise<void>;
+  /**
+   * Sends the draft's own compose window. Undefined when there is none open, so
+   * the tool runs instead; throws DraftEditedError when it was edited.
+   */
+  send?(draft: DraftRef): Promise<CallToolResult | undefined>;
   remove(draft: DraftRef): Promise<boolean>;
 }
 
@@ -206,11 +216,15 @@ export class ConfirmationGate {
         draft,
         expiresAt: this.now() + TOKEN_TTL_MS,
       });
-      const draftNote = draft
-        ? `A draft of exactly this message was saved in Mail's Drafts (nothing was sent). The ` +
-          `user can open it from the confirmation window. If the user sends or deletes that ` +
-          `draft in Mail, the confirmed call will not send again.\n\n`
-        : "";
+      const draftNote = draft?.compose
+        ? `A Mail compose window with exactly this message is open on screen and saved in ` +
+          `Drafts (nothing was sent). The user may review or send it there. If the user sends, ` +
+          `edits or discards it in Mail, the confirmed call will not send again.\n\n`
+        : draft
+          ? `A draft of exactly this message was saved in Mail's Drafts (nothing was sent). The ` +
+            `user can open it from the confirmation window. If the user sends or deletes that ` +
+            `draft in Mail, the confirmed call will not send again.\n\n`
+          : "";
       return refusal(
         `NOT EXECUTED — confirmation required.\n\n${detailsText(details)}\n\n${draftNote}` +
           `Arguments:\n${buildPreview(tool, rest)}\n\n` +
@@ -293,7 +307,24 @@ export class ConfirmationGate {
           `sent from Mail is unknown. Nothing was sent. Do not retry; ask the user to check Mail.`
       );
     }
-    const result = await exec(rest);
+    let result: CallToolResult | undefined;
+    try {
+      result = await drafts.send?.(draft);
+    } catch (error) {
+      if (error instanceof DraftEditedError) {
+        return refusal(
+          `NOT SENT — the open compose window was edited after approval, so it no longer holds ` +
+            `the approved message. Nothing was sent. Tell the user to send it from Mail, or ` +
+            `start over without a token.`
+        );
+      }
+      return refusal(
+        `SEND OUTCOME UNKNOWN — sending the compose window failed ` +
+          `(${error instanceof Error ? error.message : String(error)}). Check Mail's Sent and ` +
+          `Outbox before doing anything; do not retry.`
+      );
+    }
+    result ??= await exec(rest);
     if (result.isError) {
       return appendText(result, "The draft stays in Mail's Drafts.");
     }

@@ -3,6 +3,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import {
   CONFIRMED_TOOLS,
   ConfirmationGate,
+  DraftEditedError,
   buildPreview,
   requiresConfirmation,
   type DraftOps,
@@ -262,6 +263,42 @@ describe("ConfirmationGate with a Mail draft", () => {
     const token = tokenFrom(textOf(await run("send-email", SEND)));
     await run("send-email", { ...SEND, confirmationToken: token });
     expect(drafts.reveal).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends the reviewed compose window instead of running the tool", async () => {
+    const drafts = fakeDrafts({ state: "unchanged", snapshot: DRAFT.snapshot });
+    const sent: CallToolResult = { content: [{ type: "text", text: "compose sent" }] };
+    drafts.send = vi.fn(async () => sent);
+    const { run, exec } = setup(undefined, undefined, drafts);
+    const token = tokenFrom(textOf(await run("send-email", SEND)));
+    const result = await run("send-email", { ...SEND, confirmationToken: token });
+    expect(exec).not.toHaveBeenCalled();
+    expect(textOf(result)).toContain("compose sent");
+    expect(drafts.remove).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not send when the compose window was edited", async () => {
+    const drafts = fakeDrafts({ state: "unchanged", snapshot: DRAFT.snapshot });
+    drafts.send = vi.fn(async () => {
+      throw new DraftEditedError();
+    });
+    const { run, exec } = setup(undefined, undefined, drafts);
+    const token = tokenFrom(textOf(await run("send-email", SEND)));
+    const result = await run("send-email", { ...SEND, confirmationToken: token });
+    expect(exec).not.toHaveBeenCalled();
+    expect(textOf(result)).toContain("compose window was edited");
+  });
+
+  it("reports an unknown outcome when sending the compose window fails", async () => {
+    const drafts = fakeDrafts({ state: "unchanged", snapshot: DRAFT.snapshot });
+    drafts.send = vi.fn(async () => {
+      throw new Error("Mail timed out");
+    });
+    const { run, exec } = setup(undefined, undefined, drafts);
+    const token = tokenFrom(textOf(await run("send-email", SEND)));
+    const result = await run("send-email", { ...SEND, confirmationToken: token });
+    expect(exec).not.toHaveBeenCalled();
+    expect(textOf(result)).toContain("SEND OUTCOME UNKNOWN");
   });
 
   it("falls back to no draft when saving it fails", async () => {

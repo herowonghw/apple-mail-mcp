@@ -172,15 +172,27 @@ import {
   CONFIRMED_TOOLS,
   ConfirmationGate,
   confirmationTokenSchema,
+  DraftEditedError,
   type DraftOps,
+  type DraftRef,
 } from "@/utils/confirmationGate.js";
 import {
   checkDraft,
+  composeMatches,
   deleteDraftCopies,
+  focusCompose,
   listDraftIds,
+  openCompose,
+  readCompose,
+  readDraft,
   revealDraft,
+  sendCompose,
   settleNewDraft,
+  type DraftSnapshot,
 } from "@/utils/draftTracker.js";
+import { materializeAttachments } from "@/utils/attachmentMaterialize.js";
+import { resolveAttachmentReadPath } from "@/utils/attachmentReadPolicy.js";
+import type { AttachmentInput } from "@/types.js";
 import { isImageName, type MessageInfo, type MessageLookup } from "@/utils/operationDetails.js";
 import { nativeDialogBinary } from "@/utils/confirmDialog.js";
 import {
@@ -678,43 +690,119 @@ function mailDrafts(extra: unknown): DraftOps {
       return email;
     }
   };
+  /** An exact sender address for `account` (a Mail account name or one of its addresses). */
+  const senderAddress = async (account: unknown): Promise<string> => {
+    if (typeof account !== "string" || !account) return "";
+    const listed = (await call("list-accounts", {})).accounts;
+    for (const a of (Array.isArray(listed) ? listed : []) as Array<{
+      name?: string;
+      addresses?: string[];
+    }>) {
+      const addresses = a.addresses ?? [];
+      if (a.name === account && addresses[0]) return addresses[0];
+      const hit = addresses.find((x) => x.toLowerCase() === account.toLowerCase());
+      if (hit) return hit;
+    }
+    throw new Error(`no enabled Mail account matches "${account}"`);
+  };
+  const routeOf = async (d: { sender: string; to: string[]; cc: string[]; bcc: string[] }) => ({
+    from: await describeSender(d.sender),
+    to: d.to,
+    cc: d.cc,
+    bcc: d.bcc,
+  });
+
+  /** send-email: an open compose window, saved to Drafts, that the person can send themselves. */
+  const prepareCompose = async (args: Record<string, unknown>): Promise<DraftRef | undefined> => {
+    const createdAt = new Date();
+    const sender = await senderAddress(args.account);
+    const attachments = args.attachments as AttachmentInput[] | undefined;
+    // Same path policy as the tools: a path outside the read roots is refused here.
+    for (const a of attachments ?? []) if (typeof a === "string") resolveAttachmentReadPath(a);
+    const mat = materializeAttachments(attachments);
+    const before = new Set(await listDraftIds());
+    let outgoingId: string;
+    try {
+      outgoingId = await openCompose({
+        subject: String(args.subject ?? ""),
+        body: String(args.body ?? ""),
+        sender,
+        to: (args.to as string[] | undefined) ?? [],
+        cc: (args.cc as string[] | undefined) ?? [],
+        bcc: (args.bcc as string[] | undefined) ?? [],
+        attachmentPaths: mat.paths,
+      });
+    } finally {
+      mat.cleanup();
+    }
+    const approved = await readCompose(outgoingId);
+    if (!approved) return undefined;
+    // The stored copy in Drafts tells whether the person sent or edited it later.
+    let snapshot: DraftSnapshot | undefined;
+    for (let waited = 0; waited <= 5000 && !snapshot; waited += 500) {
+      const fresh = (await listDraftIds()).filter((id) => !before.has(id));
+      for (const id of fresh) {
+        const d = await readDraft(id);
+        if (d && d.contentHash === approved.contentHash && d.subject === approved.subject) {
+          snapshot = d;
+          break;
+        }
+      }
+      if (!snapshot) await new Promise((r) => setTimeout(r, 500));
+    }
+    if (!snapshot) return undefined;
+    return {
+      snapshot,
+      createdAt,
+      route: await routeOf(approved),
+      compose: { outgoingId, approved },
+    };
+  };
+
   return {
     async prepare(tool, args) {
-      let draftCall: { tool: string; args: Record<string, unknown> };
       if (tool === "send-email") {
-        // Threading headers, SMTP-only fields and the native editor have no plain draft.
+        // Threading headers, SMTP-only fields and the native editor have no plain compose.
         if (args.inReplyTo || args.references || args.replyTo || args.composition) return undefined;
         if (args.transport === "smtp") return undefined;
-        const { to, subject, body, cc, bcc, account, attachments } = args;
-        draftCall = {
-          tool: "create-draft",
-          args: { to, subject, body, cc, bcc, account, attachments },
-        };
-      } else if (tool === "reply-to-message" || tool === "forward-message") {
-        if (args.composition) return undefined;
-        draftCall = { tool, args: { ...args, send: false } };
-      } else {
-        return undefined;
+        return prepareCompose(args);
       }
+      if (tool !== "reply-to-message" && tool !== "forward-message") return undefined;
+      if (args.composition) return undefined;
       const createdAt = new Date();
       const before = new Set(await listDraftIds());
-      await call(draftCall.tool, draftCall.args);
+      await call(tool, { ...args, send: false });
       const snapshot = await settleNewDraft(before);
       if (!snapshot) return undefined;
-      return {
-        snapshot,
-        createdAt,
-        route: {
-          from: await describeSender(snapshot.sender),
-          to: snapshot.to,
-          cc: snapshot.cc,
-          bcc: snapshot.bcc,
-        },
-      };
+      return { snapshot, createdAt, route: await routeOf(snapshot) };
     },
     check: (draft) => checkDraft(draft.snapshot, draft.createdAt),
     reveal: async (draft) => {
+      // The compose window has a Send button; a closed one falls back to a read-only view.
+      if (draft.compose && (await focusCompose(draft.compose.outgoingId))) return;
       await revealDraft(draft.snapshot.id);
+    },
+    async send(draft) {
+      if (!draft.compose) return undefined;
+      const state = await readCompose(draft.compose.outgoingId);
+      if (!state || !state.visible) return undefined;
+      if (!composeMatches(state, draft.compose.approved)) throw new DraftEditedError();
+      await sendCompose(draft.compose.outgoingId);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Sent from ${state.sender} to ${state.to.join(", ")} (the reviewed Mail compose window was sent).`,
+          },
+        ],
+        structuredContent: {
+          ok: true,
+          sent: true,
+          recipients: [...state.to, ...state.cc, ...state.bcc],
+          from: state.sender,
+          transport: "applescript",
+        },
+      };
     },
     remove: (draft) => deleteDraftCopies(draft.snapshot),
   };

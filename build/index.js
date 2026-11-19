@@ -111433,6 +111433,8 @@ var confirmationTokenSchema = external_exports.string().optional().describe(
   "Leave empty on the first call. The server then returns a preview and a token instead of acting. Show the preview to the user; only after the user explicitly approves, call again with identical arguments plus this token. The user must then also type a 6-character code into a macOS window before anything happens."
 );
 var CONFIRMATION_NOTE = "\nConfirmation: this tool never acts on the first call. It returns a preview and a confirmationToken; ask the user to approve that preview, then repeat the call with the same arguments and the token. The user must also enter a 6-character code in a macOS window.";
+var DraftEditedError = class extends Error {
+};
 var noDrafts = {
   prepare: async () => void 0,
   check: async () => ({ state: "missing", foundInSent: false }),
@@ -111524,7 +111526,9 @@ var ConfirmationGate = class {
         draft: draft2,
         expiresAt: this.now() + TOKEN_TTL_MS
       });
-      const draftNote = draft2 ? `A draft of exactly this message was saved in Mail's Drafts (nothing was sent). The user can open it from the confirmation window. If the user sends or deletes that draft in Mail, the confirmed call will not send again.
+      const draftNote = draft2?.compose ? `A Mail compose window with exactly this message is open on screen and saved in Drafts (nothing was sent). The user may review or send it there. If the user sends, edits or discards it in Mail, the confirmed call will not send again.
+
+` : draft2 ? `A draft of exactly this message was saved in Mail's Drafts (nothing was sent). The user can open it from the confirmation window. If the user sends or deletes that draft in Mail, the confirmed call will not send again.
 
 ` : "";
       return refusal(
@@ -111588,7 +111592,20 @@ Show this to the user \u2014 make the sender address and the recipients prominen
         `NOT SENT \u2014 the draft could not be checked (${state.error}), so whether it was already sent from Mail is unknown. Nothing was sent. Do not retry; ask the user to check Mail.`
       );
     }
-    const result = await exec(rest);
+    let result;
+    try {
+      result = await drafts.send?.(draft);
+    } catch (error63) {
+      if (error63 instanceof DraftEditedError) {
+        return refusal(
+          `NOT SENT \u2014 the open compose window was edited after approval, so it no longer holds the approved message. Nothing was sent. Tell the user to send it from Mail, or start over without a token.`
+        );
+      }
+      return refusal(
+        `SEND OUTCOME UNKNOWN \u2014 sending the compose window failed (${error63 instanceof Error ? error63.message : String(error63)}). Check Mail's Sent and Outbox before doing anything; do not retry.`
+      );
+    }
+    result ??= await exec(rest);
     if (result.isError) {
       return appendText(result, "The draft stays in Mail's Drafts.");
     }
@@ -111825,8 +111842,156 @@ async function deleteDraftCopies(snapshot, sweepAfterMs = 2500) {
   const second = await deleteMatching(snapshot);
   return first && second;
 }
+var COMPOSE_SEP = "";
+async function openCompose(input2) {
+  const lines = (xs) => xs.filter(Boolean).join("\n");
+  const out = await runMail(
+    [
+      "on run argv",
+      "set subj to item 1 of argv",
+      "set bod to item 2 of argv",
+      "set snd to item 3 of argv",
+      "set toList to paragraphs of (item 4 of argv)",
+      "set ccList to paragraphs of (item 5 of argv)",
+      "set bccList to paragraphs of (item 6 of argv)",
+      "set fileList to paragraphs of (item 7 of argv)",
+      'tell application "Mail"',
+      "  set m to make new outgoing message with properties {subject:subj, content:bod, visible:true}",
+      "  tell m",
+      "    repeat with a in toList",
+      '      if (contents of a) is not "" then make new to recipient at end of to recipients with properties {address:(contents of a)}',
+      "    end repeat",
+      "    repeat with a in ccList",
+      '      if (contents of a) is not "" then make new cc recipient at end of cc recipients with properties {address:(contents of a)}',
+      "    end repeat",
+      "    repeat with a in bccList",
+      '      if (contents of a) is not "" then make new bcc recipient at end of bcc recipients with properties {address:(contents of a)}',
+      "    end repeat",
+      '    if snd is not "" then set sender to snd',
+      "    set expected to 0",
+      "    repeat with f in fileList",
+      '      if (contents of f) is not "" then',
+      "        make new attachment with properties {file name:(POSIX file (contents of f))} at after the last paragraph",
+      "        set expected to expected + 1",
+      "      end if",
+      "    end repeat",
+      "  end tell",
+      // Mail loads attachments asynchronously; saving before they land loses them.
+      "  set attachDeadline to (current date) + 15",
+      "  repeat while expected > 0",
+      "    set attachCount to 0",
+      "    try",
+      "      set attachCount to count of attachments of content of m",
+      "    end try",
+      "    if attachCount >= expected or (current date) > attachDeadline then exit repeat",
+      "    delay 0.25",
+      "  end repeat",
+      "  if expected > 0 then delay 1",
+      // `set sender` silently falls back to the default for an unknown address.
+      '  if snd is not "" and (sender of m) does not contain snd then',
+      "    close m saving no",
+      '    error "Mail would not send from " & snd',
+      "  end if",
+      "  save m",
+      "  return (id of m) as text",
+      "end tell",
+      "end run"
+    ],
+    [
+      input2.subject,
+      input2.body,
+      input2.sender,
+      lines(input2.to),
+      lines(input2.cc),
+      lines(input2.bcc),
+      lines(input2.attachmentPaths)
+    ],
+    6e4
+  );
+  return out.trim();
+}
+async function readCompose(outgoingId) {
+  const out = await runMail(
+    [
+      "on joinList(xs)",
+      `  set AppleScript's text item delimiters to ","`,
+      "  set s to xs as text",
+      `  set AppleScript's text item delimiters to ""`,
+      "  return s",
+      "end joinList",
+      "on run argv",
+      'tell application "Mail"',
+      "  set ms to (every outgoing message whose id is ((item 1 of argv) as integer))",
+      '  if (count of ms) is 0 then return ""',
+      "  set m to item 1 of ms",
+      "  set us to character id 31",
+      '  set c to ""',
+      "  try",
+      "    set c to content of m",
+      "  end try",
+      "  return ((visible of m) as text) & us & (subject of m) & us & (sender of m) & us & my joinList(address of to recipients of m) & us & my joinList(address of cc recipients of m) & us & my joinList(address of bcc recipients of m) & us & c",
+      "end tell",
+      "end run"
+    ],
+    [outgoingId]
+  ).catch(() => "");
+  if (!out) return void 0;
+  const [visible, subject, sender, to, cc, bcc, ...content3] = out.split(COMPOSE_SEP);
+  const split = (s) => (s ? s.split(",").map((x) => x.trim().toLowerCase()) : []).sort();
+  return {
+    visible: visible === "true",
+    subject,
+    sender,
+    to: split(to),
+    cc: split(cc),
+    bcc: split(bcc),
+    contentHash: createHash4("sha256").update(normalizeContent(content3.join(COMPOSE_SEP))).digest("hex")
+  };
+}
+function composeMatches(state, approved) {
+  return state.subject === approved.subject && state.contentHash === approved.contentHash && state.to.join() === approved.to.join() && state.cc.join() === approved.cc.join() && state.bcc.join() === approved.bcc.join() && state.sender === approved.sender;
+}
+async function focusCompose(outgoingId) {
+  const out = await runMail(
+    [
+      "on run argv",
+      'tell application "Mail"',
+      "  set ms to (every outgoing message whose id is ((item 1 of argv) as integer))",
+      '  if (count of ms) is 0 then return "gone"',
+      "  set m to item 1 of ms",
+      '  if not (visible of m) then return "gone"',
+      "  activate",
+      "  set subj to subject of m",
+      "  repeat with w in (every window whose visible is true)",
+      "    if name of w is subj then set index of w to 1",
+      "  end repeat",
+      '  return "front"',
+      "end tell",
+      "end run"
+    ],
+    [outgoingId]
+  ).catch(() => "gone");
+  return out.trim() === "front";
+}
+async function sendCompose(outgoingId) {
+  const out = await runMail(
+    [
+      "on run argv",
+      'tell application "Mail"',
+      "  set m to first outgoing message whose id is ((item 1 of argv) as integer)",
+      "  set ok to send m",
+      "  return ok as text",
+      "end tell",
+      "end run"
+    ],
+    [outgoingId],
+    6e4
+  );
+  if (out.trim() !== "true") throw new Error(`Mail did not send the message (${out.trim()})`);
+}
 
 // src/index.ts
+init_attachmentReadPolicy();
 init_auditLog();
 if (process.argv.includes(BODY_INDEX_BUILDER_ARG) && process.send) {
   runBuilderProcess(
@@ -112098,42 +112263,108 @@ function mailDrafts(extra) {
       return email3;
     }
   };
+  const senderAddress = async (account) => {
+    if (typeof account !== "string" || !account) return "";
+    const listed = (await call("list-accounts", {})).accounts;
+    for (const a of Array.isArray(listed) ? listed : []) {
+      const addresses2 = a.addresses ?? [];
+      if (a.name === account && addresses2[0]) return addresses2[0];
+      const hit = addresses2.find((x) => x.toLowerCase() === account.toLowerCase());
+      if (hit) return hit;
+    }
+    throw new Error(`no enabled Mail account matches "${account}"`);
+  };
+  const routeOf = async (d) => ({
+    from: await describeSender(d.sender),
+    to: d.to,
+    cc: d.cc,
+    bcc: d.bcc
+  });
+  const prepareCompose = async (args) => {
+    const createdAt = /* @__PURE__ */ new Date();
+    const sender = await senderAddress(args.account);
+    const attachments = args.attachments;
+    for (const a of attachments ?? []) if (typeof a === "string") resolveAttachmentReadPath(a);
+    const mat = materializeAttachments(attachments);
+    const before = new Set(await listDraftIds());
+    let outgoingId;
+    try {
+      outgoingId = await openCompose({
+        subject: String(args.subject ?? ""),
+        body: String(args.body ?? ""),
+        sender,
+        to: args.to ?? [],
+        cc: args.cc ?? [],
+        bcc: args.bcc ?? [],
+        attachmentPaths: mat.paths
+      });
+    } finally {
+      mat.cleanup();
+    }
+    const approved = await readCompose(outgoingId);
+    if (!approved) return void 0;
+    let snapshot;
+    for (let waited = 0; waited <= 5e3 && !snapshot; waited += 500) {
+      const fresh = (await listDraftIds()).filter((id) => !before.has(id));
+      for (const id of fresh) {
+        const d = await readDraft(id);
+        if (d && d.contentHash === approved.contentHash && d.subject === approved.subject) {
+          snapshot = d;
+          break;
+        }
+      }
+      if (!snapshot) await new Promise((r) => setTimeout(r, 500));
+    }
+    if (!snapshot) return void 0;
+    return {
+      snapshot,
+      createdAt,
+      route: await routeOf(approved),
+      compose: { outgoingId, approved }
+    };
+  };
   return {
     async prepare(tool, args) {
-      let draftCall;
       if (tool === "send-email") {
         if (args.inReplyTo || args.references || args.replyTo || args.composition) return void 0;
         if (args.transport === "smtp") return void 0;
-        const { to, subject, body, cc, bcc, account, attachments } = args;
-        draftCall = {
-          tool: "create-draft",
-          args: { to, subject, body, cc, bcc, account, attachments }
-        };
-      } else if (tool === "reply-to-message" || tool === "forward-message") {
-        if (args.composition) return void 0;
-        draftCall = { tool, args: { ...args, send: false } };
-      } else {
-        return void 0;
+        return prepareCompose(args);
       }
+      if (tool !== "reply-to-message" && tool !== "forward-message") return void 0;
+      if (args.composition) return void 0;
       const createdAt = /* @__PURE__ */ new Date();
       const before = new Set(await listDraftIds());
-      await call(draftCall.tool, draftCall.args);
+      await call(tool, { ...args, send: false });
       const snapshot = await settleNewDraft(before);
       if (!snapshot) return void 0;
-      return {
-        snapshot,
-        createdAt,
-        route: {
-          from: await describeSender(snapshot.sender),
-          to: snapshot.to,
-          cc: snapshot.cc,
-          bcc: snapshot.bcc
-        }
-      };
+      return { snapshot, createdAt, route: await routeOf(snapshot) };
     },
     check: (draft) => checkDraft(draft.snapshot, draft.createdAt),
     reveal: async (draft) => {
+      if (draft.compose && await focusCompose(draft.compose.outgoingId)) return;
       await revealDraft(draft.snapshot.id);
+    },
+    async send(draft) {
+      if (!draft.compose) return void 0;
+      const state = await readCompose(draft.compose.outgoingId);
+      if (!state || !state.visible) return void 0;
+      if (!composeMatches(state, draft.compose.approved)) throw new DraftEditedError();
+      await sendCompose(draft.compose.outgoingId);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Sent from ${state.sender} to ${state.to.join(", ")} (the reviewed Mail compose window was sent).`
+          }
+        ],
+        structuredContent: {
+          ok: true,
+          sent: true,
+          recipients: [...state.to, ...state.cc, ...state.bcc],
+          from: state.sender,
+          transport: "applescript"
+        }
+      };
     },
     remove: (draft) => deleteDraftCopies(draft.snapshot)
   };

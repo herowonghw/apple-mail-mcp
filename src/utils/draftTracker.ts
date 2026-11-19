@@ -312,3 +312,203 @@ export async function deleteDraftCopies(
   const second = await deleteMatching(snapshot);
   return first && second;
 }
+
+// ---------------------------------------------------------------------------
+// Visible compose window for a new message (send-email).
+// ---------------------------------------------------------------------------
+
+export interface ComposeInput {
+  subject: string;
+  body: string;
+  /** Exact sender address; empty for Mail's default. */
+  sender: string;
+  to: string[];
+  cc: string[];
+  bcc: string[];
+  /** Absolute, already-validated file paths. */
+  attachmentPaths: string[];
+}
+
+/** What the open compose window currently holds. */
+export interface ComposeState {
+  visible: boolean;
+  subject: string;
+  sender: string;
+  to: string[];
+  cc: string[];
+  bcc: string[];
+  contentHash: string;
+}
+
+const COMPOSE_SEP = "\u001f";
+
+/**
+ * Opens a visible Mail compose window for the message, saves it to Drafts and
+ * leaves it open, so the person can review, edit or send it themselves.
+ * Resolves to the compose window's outgoing-message id.
+ */
+export async function openCompose(input: ComposeInput): Promise<string> {
+  const lines = (xs: string[]) => xs.filter(Boolean).join("\n");
+  const out = await runMail(
+    [
+      "on run argv",
+      "set subj to item 1 of argv",
+      "set bod to item 2 of argv",
+      "set snd to item 3 of argv",
+      "set toList to paragraphs of (item 4 of argv)",
+      "set ccList to paragraphs of (item 5 of argv)",
+      "set bccList to paragraphs of (item 6 of argv)",
+      "set fileList to paragraphs of (item 7 of argv)",
+      'tell application "Mail"',
+      "  set m to make new outgoing message with properties {subject:subj, content:bod, visible:true}",
+      "  tell m",
+      "    repeat with a in toList",
+      '      if (contents of a) is not "" then make new to recipient at end of to recipients with properties {address:(contents of a)}',
+      "    end repeat",
+      "    repeat with a in ccList",
+      '      if (contents of a) is not "" then make new cc recipient at end of cc recipients with properties {address:(contents of a)}',
+      "    end repeat",
+      "    repeat with a in bccList",
+      '      if (contents of a) is not "" then make new bcc recipient at end of bcc recipients with properties {address:(contents of a)}',
+      "    end repeat",
+      '    if snd is not "" then set sender to snd',
+      "    set expected to 0",
+      "    repeat with f in fileList",
+      '      if (contents of f) is not "" then',
+      "        make new attachment with properties {file name:(POSIX file (contents of f))} at after the last paragraph",
+      "        set expected to expected + 1",
+      "      end if",
+      "    end repeat",
+      "  end tell",
+      // Mail loads attachments asynchronously; saving before they land loses them.
+      "  set attachDeadline to (current date) + 15",
+      "  repeat while expected > 0",
+      "    set attachCount to 0",
+      "    try",
+      "      set attachCount to count of attachments of content of m",
+      "    end try",
+      "    if attachCount >= expected or (current date) > attachDeadline then exit repeat",
+      "    delay 0.25",
+      "  end repeat",
+      "  if expected > 0 then delay 1",
+      // `set sender` silently falls back to the default for an unknown address.
+      '  if snd is not "" and (sender of m) does not contain snd then',
+      "    close m saving no",
+      '    error "Mail would not send from " & snd',
+      "  end if",
+      "  save m",
+      "  return (id of m) as text",
+      "end tell",
+      "end run",
+    ],
+    [
+      input.subject,
+      input.body,
+      input.sender,
+      lines(input.to),
+      lines(input.cc),
+      lines(input.bcc),
+      lines(input.attachmentPaths),
+    ],
+    60_000
+  );
+  return out.trim();
+}
+
+/** The compose window's current state, or undefined when Mail no longer has it. */
+export async function readCompose(outgoingId: string): Promise<ComposeState | undefined> {
+  const out = await runMail(
+    [
+      "on joinList(xs)",
+      '  set AppleScript\'s text item delimiters to ","',
+      "  set s to xs as text",
+      '  set AppleScript\'s text item delimiters to ""',
+      "  return s",
+      "end joinList",
+      "on run argv",
+      'tell application "Mail"',
+      "  set ms to (every outgoing message whose id is ((item 1 of argv) as integer))",
+      '  if (count of ms) is 0 then return ""',
+      "  set m to item 1 of ms",
+      "  set us to character id 31",
+      '  set c to ""',
+      "  try",
+      "    set c to content of m",
+      "  end try",
+      "  return ((visible of m) as text) & us & (subject of m) & us & (sender of m) & us & " +
+        "my joinList(address of to recipients of m) & us & my joinList(address of cc recipients of m) " +
+        "& us & my joinList(address of bcc recipients of m) & us & c",
+      "end tell",
+      "end run",
+    ],
+    [outgoingId]
+  ).catch(() => "");
+  if (!out) return undefined;
+  const [visible, subject, sender, to, cc, bcc, ...content] = out.split(COMPOSE_SEP);
+  const split = (s: string) => (s ? s.split(",").map((x) => x.trim().toLowerCase()) : []).sort();
+  return {
+    visible: visible === "true",
+    subject,
+    sender,
+    to: split(to),
+    cc: split(cc),
+    bcc: split(bcc),
+    contentHash: createHash("sha256")
+      .update(normalizeContent(content.join(COMPOSE_SEP)))
+      .digest("hex"),
+  };
+}
+
+/** True when the compose window still holds exactly the approved message. */
+export function composeMatches(state: ComposeState, approved: ComposeState): boolean {
+  return (
+    state.subject === approved.subject &&
+    state.contentHash === approved.contentHash &&
+    state.to.join() === approved.to.join() &&
+    state.cc.join() === approved.cc.join() &&
+    state.bcc.join() === approved.bcc.join() &&
+    state.sender === approved.sender
+  );
+}
+
+/** Brings the compose window to the front; false when it is gone or closed. */
+export async function focusCompose(outgoingId: string): Promise<boolean> {
+  const out = await runMail(
+    [
+      "on run argv",
+      'tell application "Mail"',
+      "  set ms to (every outgoing message whose id is ((item 1 of argv) as integer))",
+      '  if (count of ms) is 0 then return "gone"',
+      "  set m to item 1 of ms",
+      '  if not (visible of m) then return "gone"',
+      "  activate",
+      "  set subj to subject of m",
+      "  repeat with w in (every window whose visible is true)",
+      "    if name of w is subj then set index of w to 1",
+      "  end repeat",
+      '  return "front"',
+      "end tell",
+      "end run",
+    ],
+    [outgoingId]
+  ).catch(() => "gone");
+  return out.trim() === "front";
+}
+
+/** Sends the open compose window itself (Mail then removes its draft). */
+export async function sendCompose(outgoingId: string): Promise<void> {
+  const out = await runMail(
+    [
+      "on run argv",
+      'tell application "Mail"',
+      "  set m to first outgoing message whose id is ((item 1 of argv) as integer)",
+      "  set ok to send m",
+      "  return ok as text",
+      "end tell",
+      "end run",
+    ],
+    [outgoingId],
+    60_000
+  );
+  if (out.trim() !== "true") throw new Error(`Mail did not send the message (${out.trim()})`);
+}
