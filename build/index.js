@@ -8489,7 +8489,7 @@ var require_atomic_sleep = __commonJS({
   "node_modules/.pnpm/atomic-sleep@1.0.0/node_modules/atomic-sleep/index.js"(exports, module) {
     "use strict";
     if (typeof SharedArrayBuffer !== "undefined" && typeof Atomics !== "undefined") {
-      let sleep2 = function(ms) {
+      let sleep3 = function(ms) {
         const valid = ms > 0 && ms < Infinity;
         if (valid === false) {
           if (typeof ms !== "number" && typeof ms !== "bigint") {
@@ -8500,9 +8500,9 @@ var require_atomic_sleep = __commonJS({
         Atomics.wait(nil, 0, 0, Number(ms));
       };
       const nil = new Int32Array(new SharedArrayBuffer(4));
-      module.exports = sleep2;
+      module.exports = sleep3;
     } else {
-      let sleep2 = function(ms) {
+      let sleep3 = function(ms) {
         const valid = ms > 0 && ms < Infinity;
         if (valid === false) {
           if (typeof ms !== "number" && typeof ms !== "bigint") {
@@ -8514,7 +8514,7 @@ var require_atomic_sleep = __commonJS({
         while (target > Date.now()) {
         }
       };
-      module.exports = sleep2;
+      module.exports = sleep3;
     }
   }
 });
@@ -8527,7 +8527,7 @@ var require_sonic_boom = __commonJS({
     var EventEmitter7 = __require("events");
     var inherits = __require("util").inherits;
     var path3 = __require("path");
-    var sleep2 = require_atomic_sleep();
+    var sleep3 = require_atomic_sleep();
     var assert2 = __require("assert");
     var BUSY_WRITE_TIMEOUT = 100;
     var kEmptyBuffer = Buffer.allocUnsafe(0);
@@ -8673,7 +8673,7 @@ var require_sonic_boom = __commonJS({
           if ((err.code === "EAGAIN" || err.code === "EBUSY") && this.retryEAGAIN(err, this._writingBuf.length, this._len - this._writingBuf.length)) {
             if (this.sync) {
               try {
-                sleep2(BUSY_WRITE_TIMEOUT);
+                sleep3(BUSY_WRITE_TIMEOUT);
                 this.release(void 0, 0);
               } catch (err2) {
                 this.release(err2);
@@ -8986,7 +8986,7 @@ var require_sonic_boom = __commonJS({
           if (shouldRetry && !this.retryEAGAIN(err, buf.length, this._len - buf.length)) {
             throw err;
           }
-          sleep2(BUSY_WRITE_TIMEOUT);
+          sleep3(BUSY_WRITE_TIMEOUT);
         }
       }
       try {
@@ -9023,7 +9023,7 @@ var require_sonic_boom = __commonJS({
           if (shouldRetry && !this.retryEAGAIN(err, buf.length, this._len - buf.length)) {
             throw err;
           }
-          sleep2(BUSY_WRITE_TIMEOUT);
+          sleep3(BUSY_WRITE_TIMEOUT);
         }
       }
     }
@@ -9858,7 +9858,7 @@ var require_transport = __commonJS({
     var getCallers = require_caller();
     var { join: join14, isAbsolute: isAbsolute2, sep: sep2 } = __require("node:path");
     var { fileURLToPath: fileURLToPath3 } = __require("node:url");
-    var sleep2 = require_atomic_sleep();
+    var sleep3 = require_atomic_sleep();
     var onExit = require_on_exit_leak_free();
     var ThreadStream = require_thread_stream();
     function setupOnExit(stream) {
@@ -9981,7 +9981,7 @@ var require_transport = __commonJS({
           return;
         }
         stream.flushSync();
-        sleep2(100);
+        sleep3(100);
         stream.end();
       }
       return stream;
@@ -66776,7 +66776,7 @@ function applyPlaceholders(template, variables) {
 async function sendSerialViaSmtp(recipients2, subject, body, config2, opts = {}) {
   const from = resolveSmtpFrom(opts.from, config2);
   const send = opts.send ?? sendViaSmtp;
-  const sleep2 = opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+  const sleep3 = opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
   const delay = Math.min(Math.max(opts.delayMs ?? 500, 0), 1e4);
   const results = [];
   for (let i = 0; i < recipients2.length; i++) {
@@ -66804,7 +66804,7 @@ async function sendSerialViaSmtp(recipients2, subject, body, config2, opts = {})
       });
     }
     if (delay > 0 && i < recipients2.length - 1) {
-      await sleep2(delay);
+      await sleep3(delay);
     }
   }
   return results;
@@ -69157,7 +69157,7 @@ function extractRawMessageId(raw) {
 async function imapAppendSentCopy(smtpUser, raw, deps = {}, opts = {}) {
   if (!deps.config && !isImapAccount(smtpUser)) return { attempted: false };
   const messageId = extractRawMessageId(raw);
-  const sleep2 = opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+  const sleep3 = opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
   const now = opts.now ?? Date.now;
   try {
     return await withClient({ ...deps, account: deps.account ?? smtpUser }, async (client, cfg) => {
@@ -69166,7 +69166,7 @@ async function imapAppendSentCopy(smtpUser, raw, deps = {}, opts = {}) {
         const gmail = isGmailHost(cfg.host) || isGmailHost(opts.smtpHost);
         const budget = gmail ? opts.gmailPollMs ?? SENT_COPY_GMAIL_POLL_MS : 0;
         const interval = Math.max(1, opts.gmailPollIntervalMs ?? SENT_COPY_GMAIL_POLL_INTERVAL_MS);
-        if (await sentCopyPresent(client, path3, messageId, budget, interval, sleep2, now)) {
+        if (await sentCopyPresent(client, path3, messageId, budget, interval, sleep3, now)) {
           return { attempted: true, success: true, mailbox: path3, alreadyFiled: true };
         }
       }
@@ -69178,7 +69178,7 @@ async function imapAppendSentCopy(smtpUser, raw, deps = {}, opts = {}) {
     return { attempted: true, success: false, error: errText2(e) };
   }
 }
-async function sentCopyPresent(client, path3, messageId, budget, interval, sleep2, now) {
+async function sentCopyPresent(client, path3, messageId, budget, interval, sleep3, now) {
   const deadline = now() + budget;
   for (; ; ) {
     try {
@@ -69197,7 +69197,7 @@ async function sentCopyPresent(client, path3, messageId, budget, interval, sleep
     }
     const left = deadline - now();
     if (left <= 0) return false;
-    await sleep2(Math.min(interval, left));
+    await sleep3(Math.min(interval, left));
   }
 }
 function resolveDraftImapAccount(account, smtpUser, env = process.env) {
@@ -111780,6 +111780,31 @@ async function checkDraft(saved, createdAt) {
   }
   return sameContent(current, saved) ? { state: "unchanged", snapshot: current } : { state: "changed", snapshot: current };
 }
+var sleep2 = (ms) => new Promise((r) => setTimeout(r, ms));
+async function settleNewDraft(before, settleMs = 3e3) {
+  let fresh = [];
+  for (let waited = 0; ; waited += 500) {
+    fresh = (await listDraftIds()).filter((id) => !before.has(id));
+    if (waited >= settleMs) break;
+    await sleep2(500);
+  }
+  const snapshots = (await Promise.all(fresh.map(readDraft))).filter(
+    (d) => !!d
+  );
+  if (snapshots.length === 0) return void 0;
+  const [keep, ...rest] = snapshots.sort((a, b) => Number(b.id) - Number(a.id));
+  if (!rest.every((d) => sameContent(d, keep))) return void 0;
+  for (const extra of rest) await deleteDraft(extra.id);
+  return keep;
+}
+async function deleteDraftCopies(snapshot) {
+  let ok = true;
+  if (await readDraft(snapshot.id) && !await deleteDraft(snapshot.id)) ok = false;
+  for (const copy of await draftsWithSubject(snapshot.subject)) {
+    if (sameContent(copy, snapshot) && !await deleteDraft(copy.id)) ok = false;
+  }
+  return ok;
+}
 
 // src/index.ts
 init_auditLog();
@@ -112073,9 +112098,7 @@ function mailDrafts(extra) {
       const createdAt = /* @__PURE__ */ new Date();
       const before = new Set(await listDraftIds());
       await call(draftCall.tool, draftCall.args);
-      const fresh = (await listDraftIds()).filter((id) => !before.has(id));
-      if (fresh.length !== 1) return void 0;
-      const snapshot = await readDraft(fresh[0]);
+      const snapshot = await settleNewDraft(before);
       if (!snapshot) return void 0;
       return {
         snapshot,
@@ -112090,7 +112113,7 @@ function mailDrafts(extra) {
     },
     check: (draft) => checkDraft(draft.snapshot, draft.createdAt),
     reveal: (draft) => revealDraft(draft.snapshot.id),
-    remove: (draft) => deleteDraft(draft.snapshot.id)
+    remove: (draft) => deleteDraftCopies(draft.snapshot)
   };
 }
 function messageLookup(extra) {

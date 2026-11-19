@@ -213,7 +213,7 @@ export async function deleteDraft(id: string): Promise<boolean> {
   }
 }
 
-function sameContent(a: DraftSnapshot, b: DraftSnapshot): boolean {
+export function sameContent(a: DraftSnapshot, b: DraftSnapshot): boolean {
   return (
     a.subject === b.subject &&
     a.contentHash === b.contentHash &&
@@ -241,4 +241,41 @@ export async function checkDraft(saved: DraftSnapshot, createdAt: Date): Promise
   return sameContent(current, saved)
     ? { state: "unchanged", snapshot: current }
     : { state: "changed", snapshot: current };
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * The draft a compose just saved. Exchange accounts can store two copies of one
+ * save a moment apart, so wait for Drafts to settle, keep one copy and delete
+ * the others. Undefined when no new draft, or unrelated new drafts, appeared.
+ */
+export async function settleNewDraft(
+  before: Set<string>,
+  settleMs = 3000
+): Promise<DraftSnapshot | undefined> {
+  let fresh: string[] = [];
+  for (let waited = 0; ; waited += 500) {
+    fresh = (await listDraftIds()).filter((id) => !before.has(id));
+    if (waited >= settleMs) break;
+    await sleep(500);
+  }
+  const snapshots = (await Promise.all(fresh.map(readDraft))).filter(
+    (d): d is DraftSnapshot => !!d
+  );
+  if (snapshots.length === 0) return undefined;
+  const [keep, ...rest] = snapshots.sort((a, b) => Number(b.id) - Number(a.id));
+  if (!rest.every((d) => sameContent(d, keep))) return undefined;
+  for (const extra of rest) await deleteDraft(extra.id);
+  return keep;
+}
+
+/** Deletes the draft and any other copy with the same content; false if one could not be. */
+export async function deleteDraftCopies(snapshot: DraftSnapshot): Promise<boolean> {
+  let ok = true;
+  if ((await readDraft(snapshot.id)) && !(await deleteDraft(snapshot.id))) ok = false;
+  for (const copy of await draftsWithSubject(snapshot.subject)) {
+    if (sameContent(copy, snapshot) && !(await deleteDraft(copy.id))) ok = false;
+  }
+  return ok;
 }

@@ -176,10 +176,10 @@ import {
 } from "@/utils/confirmationGate.js";
 import {
   checkDraft,
-  deleteDraft,
+  deleteDraftCopies,
   listDraftIds,
-  readDraft,
   revealDraft,
+  settleNewDraft,
 } from "@/utils/draftTracker.js";
 import { isImageName, type MessageInfo, type MessageLookup } from "@/utils/operationDetails.js";
 import { nativeDialogBinary } from "@/utils/confirmDialog.js";
@@ -699,9 +699,7 @@ function mailDrafts(extra: unknown): DraftOps {
       const createdAt = new Date();
       const before = new Set(await listDraftIds());
       await call(draftCall.tool, draftCall.args);
-      const fresh = (await listDraftIds()).filter((id) => !before.has(id));
-      if (fresh.length !== 1) return undefined;
-      const snapshot = await readDraft(fresh[0]);
+      const snapshot = await settleNewDraft(before);
       if (!snapshot) return undefined;
       return {
         snapshot,
@@ -716,7 +714,7 @@ function mailDrafts(extra: unknown): DraftOps {
     },
     check: (draft) => checkDraft(draft.snapshot, draft.createdAt),
     reveal: (draft) => revealDraft(draft.snapshot.id),
-    remove: (draft) => deleteDraft(draft.snapshot.id),
+    remove: (draft) => deleteDraftCopies(draft.snapshot),
   };
 }
 
