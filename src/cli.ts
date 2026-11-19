@@ -33,7 +33,8 @@ import {
 import type { AttachmentInput } from "@/types.js";
 import { SETUP_GUIDE_URL } from "@/utils/docsUrls.js";
 import { TOOL_MODE_ENV, isToolAllowed, parseToolMode } from "@/utils/toolMode.js";
-import { buildPreview, macDialogPrompt, type HumanPrompt } from "@/utils/confirmationGate.js";
+import { macDialogPrompt, type HumanPrompt } from "@/utils/confirmDialog.js";
+import { cleanupDetails, describeOperation, noLookup } from "@/utils/operationDetails.js";
 
 /** sysexits.h codes used so callers can distinguish failure modes. */
 export const EX_USAGE = 64;
@@ -190,19 +191,23 @@ export async function runCli(argv: string[], deps: CliDeps = {}): Promise<number
     ? values.attach
     : undefined;
 
-  // Same human gate as the MCP send tools: a person types a code into a macOS dialog.
-  const outcome = await confirm(
-    "apple-mail-send：确认发送",
-    buildPreview("apple-mail-send", {
-      from: values.from,
+  // Same human gate as the MCP send tools: a person types a code into a macOS window.
+  const details = await describeOperation(
+    "send-email",
+    {
+      account: values.from,
       to: values.to,
       cc: values.cc,
       bcc: values.bcc,
-      replyTo: values["reply-to"],
       subject: values.subject,
       body,
       attachments,
-    })
+    },
+    noLookup,
+    { withImage: true }
+  );
+  const outcome = await confirm("apple-mail-send 发送确认", details).finally(() =>
+    cleanupDetails(details)
   );
   if (outcome !== "approved") {
     err(`Not sent: the confirmation dialog was ${outcome}.`);

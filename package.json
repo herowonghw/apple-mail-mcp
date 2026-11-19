@@ -11,6 +11,7 @@
   },
   "files": [
     "build",
+    "native",
     "scripts/render-authored-body.mjs",
     "docs",
     "README.md",

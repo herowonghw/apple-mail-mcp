@@ -26,7 +26,7 @@ import {
   type RegisteredTool,
   type ToolCallback,
 } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult, ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { integerNumber, registerToolWithContracts } from "@/utils/toolRegistration.js";
@@ -38,7 +38,9 @@ import {
   noteAccountListFailure,
 } from "@/services/appleMailManager.js";
 import { readFileSync, writeFileSync } from "fs";
-import { join as joinPath } from "path";
+import { extname, join as joinPath } from "path";
+import { tmpdir } from "os";
+import { randomUUID } from "crypto";
 import {
   sendViaSmtp,
   smtpDeliveryFields,
@@ -172,6 +174,8 @@ import {
   confirmationTokenSchema,
   stripToken,
 } from "@/utils/confirmationGate.js";
+import { isImageName, type MessageInfo, type MessageLookup } from "@/utils/operationDetails.js";
+import { nativeDialogBinary } from "@/utils/confirmDialog.js";
 import {
   writeDestructiveAudit,
   reconciliationWarnings,
@@ -591,7 +595,7 @@ function registerTool<
     };
     const run = cb as unknown as (args: Record<string, unknown>, extra: unknown) => unknown;
     cb = (async (args: Record<string, unknown>, extra: unknown) => {
-      const refused = await confirmationGate.check(name, args);
+      const refused = await confirmationGate.check(name, args, messageLookup(extra));
       if (refused) return refused;
       return run(stripToken(args), extra);
     }) as unknown as ToolCallback<InputArgs>;
@@ -605,12 +609,86 @@ function registerTool<
     },
     cb
   );
+  registeredTools.set(name, tool);
   // A disabled tool is neither listed nor callable (see toolMode.ts).
   if (!isToolAllowed(name, toolMode)) tool.disable();
   return tool;
 }
 
 const confirmationGate = new ConfirmationGate();
+// Build the confirmation window in the background so the first prompt does not wait on swiftc.
+void nativeDialogBinary();
+const registeredTools = new Map<string, RegisteredTool>();
+
+/**
+ * Reads a message for the confirmation window through the read tools' own
+ * handlers, so IMAP and AppleScript ids resolve exactly as they do for reads.
+ */
+function messageLookup(extra: unknown): MessageLookup {
+  const call = async (tool: string, args: Record<string, unknown>) => {
+    const handler = registeredTools.get(tool)?.handler as
+      ((a: Record<string, unknown>, e: unknown) => Promise<CallToolResult>) | undefined;
+    if (!handler) throw new Error(`${tool} is not available`);
+    let timer: NodeJS.Timeout | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error("timed out")), 20_000);
+    });
+    try {
+      const result = await Promise.race([handler(args, extra), timeout]);
+      if (result.isError) {
+        const text = result.content?.find((c) => c.type === "text");
+        throw new Error(text && "text" in text ? text.text.slice(0, 120) : "read failed");
+      }
+      return (result.structuredContent ?? {}) as Record<string, unknown>;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+  const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
+  return async (id, { account, mailbox, withBody, withImage }) => {
+    const info: MessageInfo = {};
+    try {
+      const h = await call("get-message-headers", { id, account, mailbox });
+      Object.assign(info, {
+        subject: str(h.subject),
+        from: str(h.from),
+        to: str(h.to),
+        cc: str(h.cc),
+        date: str(h.date),
+      });
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : String(error) };
+    }
+    if (withBody) {
+      try {
+        info.body = str((await call("get-message", { id, account, mailbox })).body);
+      } catch {
+        // The headers are enough to identify the message.
+      }
+    }
+    if (withImage) {
+      try {
+        const listed = (await call("list-attachments", { id })).attachments;
+        const first = (Array.isArray(listed) ? listed : []).find((a) => {
+          const { name, mimeType } = a as { name?: string; mimeType?: string };
+          return (name && isImageName(name)) || mimeType?.startsWith("image/");
+        }) as { name?: string } | undefined;
+        if (first?.name) {
+          const fetched = await call("fetch-attachment", { id, attachmentName: first.name });
+          if (typeof fetched.contentBase64 === "string") {
+            const ext = extname(first.name) || ".img";
+            const path = joinPath(tmpdir(), `amm-confirm-${randomUUID()}${ext}`);
+            writeFileSync(path, Buffer.from(fetched.contentBase64, "base64"), { mode: 0o600 });
+            info.image = { name: first.name, path };
+          }
+        }
+      } catch {
+        // No preview is fine.
+      }
+    }
+    return info;
+  };
+}
 
 /** Parsed once, after loadFileConfig() has filled the environment. */
 const toolMode = (() => {

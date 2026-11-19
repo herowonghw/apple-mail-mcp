@@ -7244,8 +7244,8 @@ var require_dist = __commonJS({
         return ajv;
       }
       const [formats, exportName] = opts.mode === "fast" ? [formats_1.fastFormats, fastName] : [formats_1.fullFormats, fullName];
-      const list = opts.formats || formats_1.formatNames;
-      addFormats(ajv, list, formats, exportName);
+      const list2 = opts.formats || formats_1.formatNames;
+      addFormats(ajv, list2, formats, exportName);
       if (opts.keywords)
         (0, limit_1.default)(ajv);
       return ajv;
@@ -7257,11 +7257,11 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name2}"`);
       return f;
     };
-    function addFormats(ajv, list, fs4, exportName) {
+    function addFormats(ajv, list2, fs4, exportName) {
       var _a3;
       var _b;
       (_a3 = (_b = ajv.opts.code).formats) !== null && _a3 !== void 0 ? _a3 : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
-      for (const f of list)
+      for (const f of list2)
         ajv.addFormat(f, fs4[f]);
     }
     module.exports = exports = formatsPlugin;
@@ -9337,7 +9337,7 @@ var require_thread_stream = __commonJS({
     var { version: version4 } = require_package();
     var { EventEmitter: EventEmitter7 } = __require("events");
     var { Worker } = __require("worker_threads");
-    var { join: join12 } = __require("path");
+    var { join: join14 } = __require("path");
     var { pathToFileURL } = __require("url");
     var { wait } = require_wait();
     var {
@@ -9388,7 +9388,7 @@ var require_thread_stream = __commonJS({
     function createWorker(stream, opts) {
       const { filename, workerData } = opts;
       const bundlerOverrides = "__bundlerPathsOverrides" in globalThis ? globalThis.__bundlerPathsOverrides : {};
-      const toExecute = bundlerOverrides["thread-stream-worker"] || join12(__dirname, "lib", "worker.js");
+      const toExecute = bundlerOverrides["thread-stream-worker"] || join14(__dirname, "lib", "worker.js");
       const worker = new Worker(toExecute, {
         ...opts.workerOpts,
         name: opts.workerOpts?.name || "thread-stream",
@@ -9854,10 +9854,10 @@ var require_transport = __commonJS({
   "node_modules/.pnpm/pino@10.3.1/node_modules/pino/lib/transport.js"(exports, module) {
     "use strict";
     var { createRequire: createRequire2 } = __require("module");
-    var { existsSync: existsSync8 } = __require("node:fs");
+    var { existsSync: existsSync9 } = __require("node:fs");
     var getCallers = require_caller();
-    var { join: join12, isAbsolute: isAbsolute2, sep: sep2 } = __require("node:path");
-    var { fileURLToPath: fileURLToPath2 } = __require("node:url");
+    var { join: join14, isAbsolute: isAbsolute2, sep: sep2 } = __require("node:path");
+    var { fileURLToPath: fileURLToPath3 } = __require("node:url");
     var sleep2 = require_atomic_sleep();
     var onExit = require_on_exit_leak_free();
     var ThreadStream = require_thread_stream();
@@ -9923,12 +9923,12 @@ var require_transport = __commonJS({
       let path3 = unquoted;
       if (path3.startsWith("file://")) {
         try {
-          path3 = fileURLToPath2(path3);
+          path3 = fileURLToPath3(path3);
         } catch {
           return false;
         }
       }
-      return isAbsolute2(path3) && !existsSync8(path3);
+      return isAbsolute2(path3) && !existsSync9(path3);
     }
     function stripQuotes(value) {
       const first = value[0];
@@ -10009,7 +10009,7 @@ var require_transport = __commonJS({
         throw new Error("only one of target or targets can be specified");
       }
       if (targets) {
-        target = bundlerOverrides["pino-worker"] || join12(__dirname, "worker.js");
+        target = bundlerOverrides["pino-worker"] || join14(__dirname, "worker.js");
         options.targets = targets.filter((dest) => dest.target).map((dest) => {
           return {
             ...dest,
@@ -10027,7 +10027,7 @@ var require_transport = __commonJS({
           });
         });
       } else if (pipeline3) {
-        target = bundlerOverrides["pino-worker"] || join12(__dirname, "worker.js");
+        target = bundlerOverrides["pino-worker"] || join14(__dirname, "worker.js");
         options.pipelines = [pipeline3.map((dest) => {
           return {
             ...dest,
@@ -10050,7 +10050,7 @@ var require_transport = __commonJS({
           return origin;
         }
         if (origin === "pino/file") {
-          return join12(__dirname, "..", "file.js");
+          return join14(__dirname, "..", "file.js");
         }
         let fixTarget2;
         for (const filePath of callers) {
@@ -11030,7 +11030,7 @@ var require_safe_stable_stringify = __commonJS({
               return circularValue;
             }
             let res = "";
-            let join12 = ",";
+            let join14 = ",";
             const originalIndentation = indentation;
             if (Array.isArray(value)) {
               if (value.length === 0) {
@@ -11044,7 +11044,7 @@ var require_safe_stable_stringify = __commonJS({
                 indentation += spacer;
                 res += `
 ${indentation}`;
-                join12 = `,
+                join14 = `,
 ${indentation}`;
               }
               const maximumValuesToStringify = Math.min(value.length, maximumBreadth);
@@ -11052,13 +11052,13 @@ ${indentation}`;
               for (; i < maximumValuesToStringify - 1; i++) {
                 const tmp2 = stringifyFnReplacer(String(i), value, stack, replacer, spacer, indentation);
                 res += tmp2 !== void 0 ? tmp2 : "null";
-                res += join12;
+                res += join14;
               }
               const tmp = stringifyFnReplacer(String(i), value, stack, replacer, spacer, indentation);
               res += tmp !== void 0 ? tmp : "null";
               if (value.length - 1 > maximumBreadth) {
                 const removedKeys = value.length - maximumBreadth - 1;
-                res += `${join12}"... ${getItemCount(removedKeys)} not stringified"`;
+                res += `${join14}"... ${getItemCount(removedKeys)} not stringified"`;
               }
               if (spacer !== "") {
                 res += `
@@ -11079,7 +11079,7 @@ ${originalIndentation}`;
             let separator = "";
             if (spacer !== "") {
               indentation += spacer;
-              join12 = `,
+              join14 = `,
 ${indentation}`;
               whitespace = " ";
             }
@@ -11093,13 +11093,13 @@ ${indentation}`;
               const tmp = stringifyFnReplacer(key2, value, stack, replacer, spacer, indentation);
               if (tmp !== void 0) {
                 res += `${separator}${strEscape(key2)}:${whitespace}${tmp}`;
-                separator = join12;
+                separator = join14;
               }
             }
             if (keyLength > maximumBreadth) {
               const removedKeys = keyLength - maximumBreadth;
               res += `${separator}"...":${whitespace}"${getItemCount(removedKeys)} not stringified"`;
-              separator = join12;
+              separator = join14;
             }
             if (spacer !== "" && separator.length > 1) {
               res = `
@@ -11140,7 +11140,7 @@ ${originalIndentation}`;
             }
             const originalIndentation = indentation;
             let res = "";
-            let join12 = ",";
+            let join14 = ",";
             if (Array.isArray(value)) {
               if (value.length === 0) {
                 return "[]";
@@ -11153,7 +11153,7 @@ ${originalIndentation}`;
                 indentation += spacer;
                 res += `
 ${indentation}`;
-                join12 = `,
+                join14 = `,
 ${indentation}`;
               }
               const maximumValuesToStringify = Math.min(value.length, maximumBreadth);
@@ -11161,13 +11161,13 @@ ${indentation}`;
               for (; i < maximumValuesToStringify - 1; i++) {
                 const tmp2 = stringifyArrayReplacer(String(i), value[i], stack, replacer, spacer, indentation);
                 res += tmp2 !== void 0 ? tmp2 : "null";
-                res += join12;
+                res += join14;
               }
               const tmp = stringifyArrayReplacer(String(i), value[i], stack, replacer, spacer, indentation);
               res += tmp !== void 0 ? tmp : "null";
               if (value.length - 1 > maximumBreadth) {
                 const removedKeys = value.length - maximumBreadth - 1;
-                res += `${join12}"... ${getItemCount(removedKeys)} not stringified"`;
+                res += `${join14}"... ${getItemCount(removedKeys)} not stringified"`;
               }
               if (spacer !== "") {
                 res += `
@@ -11180,7 +11180,7 @@ ${originalIndentation}`;
             let whitespace = "";
             if (spacer !== "") {
               indentation += spacer;
-              join12 = `,
+              join14 = `,
 ${indentation}`;
               whitespace = " ";
             }
@@ -11189,7 +11189,7 @@ ${indentation}`;
               const tmp = stringifyArrayReplacer(key2, value[key2], stack, replacer, spacer, indentation);
               if (tmp !== void 0) {
                 res += `${separator}${strEscape(key2)}:${whitespace}${tmp}`;
-                separator = join12;
+                separator = join14;
               }
             }
             if (spacer !== "" && separator.length > 1) {
@@ -11247,20 +11247,20 @@ ${originalIndentation}`;
               indentation += spacer;
               let res2 = `
 ${indentation}`;
-              const join13 = `,
+              const join15 = `,
 ${indentation}`;
               const maximumValuesToStringify = Math.min(value.length, maximumBreadth);
               let i = 0;
               for (; i < maximumValuesToStringify - 1; i++) {
                 const tmp2 = stringifyIndent(String(i), value[i], stack, spacer, indentation);
                 res2 += tmp2 !== void 0 ? tmp2 : "null";
-                res2 += join13;
+                res2 += join15;
               }
               const tmp = stringifyIndent(String(i), value[i], stack, spacer, indentation);
               res2 += tmp !== void 0 ? tmp : "null";
               if (value.length - 1 > maximumBreadth) {
                 const removedKeys = value.length - maximumBreadth - 1;
-                res2 += `${join13}"... ${getItemCount(removedKeys)} not stringified"`;
+                res2 += `${join15}"... ${getItemCount(removedKeys)} not stringified"`;
               }
               res2 += `
 ${originalIndentation}`;
@@ -11276,16 +11276,16 @@ ${originalIndentation}`;
               return '"[Object]"';
             }
             indentation += spacer;
-            const join12 = `,
+            const join14 = `,
 ${indentation}`;
             let res = "";
             let separator = "";
             let maximumPropertiesToStringify = Math.min(keyLength, maximumBreadth);
             if (isTypedArrayWithEntries(value)) {
-              res += stringifyTypedArray(value, join12, maximumBreadth);
+              res += stringifyTypedArray(value, join14, maximumBreadth);
               keys = keys.slice(value.length);
               maximumPropertiesToStringify -= value.length;
-              separator = join12;
+              separator = join14;
             }
             if (deterministic) {
               keys = sort(keys, comparator);
@@ -11296,13 +11296,13 @@ ${indentation}`;
               const tmp = stringifyIndent(key2, value[key2], stack, spacer, indentation);
               if (tmp !== void 0) {
                 res += `${separator}${strEscape(key2)}: ${tmp}`;
-                separator = join12;
+                separator = join14;
               }
             }
             if (keyLength > maximumBreadth) {
               const removedKeys = keyLength - maximumBreadth;
               res += `${separator}"...": "${getItemCount(removedKeys)} not stringified"`;
-              separator = join12;
+              separator = join14;
             }
             if (separator !== "") {
               res = `
@@ -35439,7 +35439,7 @@ var require_libmime = __commonJS({
        * @return {Array} A list of encoded keys and headers
        */
       buildHeaderParam(key, data, maxLength, fromCharset) {
-        let list = [];
+        let list2 = [];
         if (typeof data !== "string" && !Buffer2.isBuffer(data)) {
           data = data === null || data === void 0 ? "" : data.toString();
         }
@@ -35461,13 +35461,13 @@ var require_libmime = __commonJS({
             ];
           }
           encodedStr = encodedStr.replace(new RegExp(".{" + maxLength + "}", "g"), (str2) => {
-            list.push({
+            list2.push({
               line: str2
             });
             return "";
           });
           if (encodedStr) {
-            list.push({
+            list2.push({
               line: encodedStr
             });
           }
@@ -35498,7 +35498,7 @@ var require_libmime = __commonJS({
               chr = chr === " " ? chr : this.safeEncodeURIComponent(chr);
               if (chr !== encodedStr[i]) {
                 if ((this.safeEncodeURIComponent(line) + chr).length >= maxLength) {
-                  list.push({
+                  list2.push({
                     line,
                     encoded: isEncoded
                   });
@@ -35513,7 +35513,7 @@ var require_libmime = __commonJS({
               }
             }
             if ((line + chr).length >= maxLength) {
-              list.push({
+              list2.push({
                 line,
                 encoded: isEncoded
               });
@@ -35529,13 +35529,13 @@ var require_libmime = __commonJS({
             }
           }
           if (line) {
-            list.push({
+            list2.push({
               line,
               encoded: isEncoded
             });
           }
         }
-        return list.map((item, i2) => ({
+        return list2.map((item, i2) => ({
           // encoded lines: {name}*{part}*
           // unencoded lines: {name}*{part}
           // if any line needs to be encoded then the first line (part==0) is always encoded
@@ -44295,7 +44295,7 @@ var require_tools2 = __commonJS({
     var libmime = require_libmime();
     var { resolveCharset } = require_charsets2();
     var { compiler } = require_imap_handler();
-    var { createHash: createHash3 } = __require("crypto");
+    var { createHash: createHash4 } = __require("crypto");
     var { JPDecoder } = require_jp_decoder();
     var iconv = require_lib();
     var FLAG_COLORS = ["red", "orange", "yellow", "green", "blue", "purple", "grey"];
@@ -44609,10 +44609,10 @@ var require_tools2 = __commonJS({
        * @param {Array} list - Array of capability objects from IMAP response
        * @returns {Map<string, boolean|number>} Map of capability names to `true` or numeric values
        */
-      updateCapabilities(list) {
+      updateCapabilities(list2) {
         let map3 = /* @__PURE__ */ new Map();
-        if (list && Array.isArray(list)) {
-          list.forEach((val) => {
+        if (list2 && Array.isArray(list2)) {
+          list2.forEach((val) => {
             if (!val || typeof val.value !== "string") {
               return;
             }
@@ -44925,7 +44925,7 @@ var require_tools2 = __commonJS({
             } catch {
             }
           }
-          map3.id = map3.emailId || createHash3("md5").update([path3, mailbox.uidValidity?.toString() || "", map3.uid.toString()].join(":")).digest("hex");
+          map3.id = map3.emailId || createHash4("md5").update([path3, mailbox.uidValidity?.toString() || "", map3.uid.toString()].join(":")).digest("hex");
         }
         if (map3.flags) {
           let flagColor = tools.getFlagColor(map3.flags);
@@ -44977,8 +44977,8 @@ var require_tools2 = __commonJS({
           }
           return obj.value;
         };
-        let processAddresses = function(list) {
-          return [].concat(list || []).map((addr) => {
+        let processAddresses = function(list2) {
+          return [].concat(list2 || []).map((addr) => {
             if (!addr) {
               return false;
             }
@@ -45346,11 +45346,11 @@ var require_tools2 = __commonJS({
        * @param {*} list - Parsed attribute list from a response.
        * @returns {String[]} The string values, in order, with unusable entries dropped.
        */
-      getStringList(list) {
-        if (!Array.isArray(list)) {
+      getStringList(list2) {
+        if (!Array.isArray(list2)) {
           return [];
         }
-        return list.map((entry) => entry && typeof entry.value === "string" ? entry.value : false).filter((entry) => entry);
+        return list2.map((entry) => entry && typeof entry.value === "string" ? entry.value : false).filter((entry) => entry);
       },
       /**
        * Parses an untrusted decimal value from a server response into a BigInt.
@@ -45463,22 +45463,22 @@ var require_tools2 = __commonJS({
        * @param {Number|Number[]} list - Sequence number or array of sequence numbers
        * @returns {String} Packed IMAP sequence range string
        */
-      packMessageRange(list) {
-        if (!Array.isArray(list)) {
-          list = [].concat(list || []);
+      packMessageRange(list2) {
+        if (!Array.isArray(list2)) {
+          list2 = [].concat(list2 || []);
         }
-        if (!list.length) {
+        if (!list2.length) {
           return "";
         }
-        list = Array.from(new Set(list)).sort((a, b) => a - b);
-        let last = list[list.length - 1];
+        list2 = Array.from(new Set(list2)).sort((a, b) => a - b);
+        let last = list2[list2.length - 1];
         let result = [[last]];
-        for (let i = list.length - 2; i >= 0; i--) {
-          if (list[i] === list[i + 1] - 1) {
-            result[0].unshift(list[i]);
+        for (let i = list2.length - 2; i >= 0; i--) {
+          if (list2[i] === list2[i + 1] - 1) {
+            result[0].unshift(list2[i]);
             continue;
           }
-          result.unshift([list[i]]);
+          result.unshift([list2[i]]);
         }
         result = result.map((item) => {
           if (item.length === 1) {
@@ -45783,9 +45783,9 @@ var require_status_fields = __commonJS({
       SIZE: { key: "size", parser: (value) => parseUintValue(value) },
       DELETED: { key: "deleted", parser: uint322 }
     };
-    var parseStatusList = (list, onField) => {
+    var parseStatusList = (list2, onField) => {
       let name2;
-      list.forEach((entry, i) => {
+      list2.forEach((entry, i) => {
         if (i % 2 === 0) {
           name2 = entry && typeof entry.value === "string" ? entry.value : false;
           return;
@@ -47995,10 +47995,10 @@ var require_search_compiler = __commonJS({
                   }
                   break;
                 }
-                let genOrTree = (list) => {
+                let genOrTree = (list2) => {
                   let group = false;
                   let groups = [];
-                  list.forEach((entry, i) => {
+                  list2.forEach((entry, i) => {
                     if (i % 2 === 0) {
                       group = [entry];
                     } else {
@@ -48435,9 +48435,9 @@ var require_append = __commonJS({
           }
         }
         if (map3.seq && !map3.uid) {
-          let list = await connection.search({ seq: map3.seq }, { uid: true });
-          if (list && list.length) {
-            map3.uid = list[0];
+          let list2 = await connection.search({ seq: map3.seq }, { uid: true });
+          if (list2 && list2.length) {
+            map3.uid = list2[0];
           }
         }
         return map3;
@@ -48493,11 +48493,11 @@ var require_status = __commonJS({
             // Parsed as alternating key-value pairs (i % 2 pattern).
             STATUS: async (untagged) => {
               let updateCurrent = connection.state === connection.states.SELECTED && path3 === connection.mailbox.path;
-              let list = untagged.attributes && Array.isArray(untagged.attributes[1]) ? untagged.attributes[1] : false;
-              if (!list) {
+              let list2 = untagged.attributes && Array.isArray(untagged.attributes[1]) ? untagged.attributes[1] : false;
+              if (!list2) {
                 return;
               }
-              parseStatusList(list, (key, value) => {
+              parseStatusList(list2, (key, value) => {
                 map3[key] = value;
                 if (updateCurrent && MAILBOX_UPDATERS[key]) {
                   MAILBOX_UPDATERS[key](value, connection, path3);
@@ -51793,7 +51793,7 @@ var require_imap_flow = __commonJS({
         }
         let finished3 = false;
         let aborted2 = false;
-        let push = false;
+        let push2 = false;
         let rowQueue = [];
         let getNext = () => new Promise((resolve5, reject) => {
           let check2 = () => {
@@ -51807,8 +51807,8 @@ var require_imap_flow = __commonJS({
             if (finished3) {
               return resolve5(null);
             }
-            push = () => {
-              push = false;
+            push2 = () => {
+              push2 = false;
               check2();
             };
           };
@@ -51829,19 +51829,19 @@ var require_imap_flow = __commonJS({
                 next
               }
             });
-            if (typeof push === "function") {
-              push();
+            if (typeof push2 === "function") {
+              push2();
             }
           }
         }).then(() => {
           finished3 = true;
-          if (typeof push === "function") {
-            push();
+          if (typeof push2 === "function") {
+            push2();
           }
         }).catch((err) => {
           rowQueue.push({ err });
-          if (typeof push === "function") {
-            push();
+          if (typeof push2 === "function") {
+            push2();
           }
         });
         let lastRes = null;
@@ -56811,7 +56811,7 @@ function buildHeaderValue(structured) {
   return value + (paramsArray.length ? "; " + paramsArray.join("; ") : "");
 }
 function buildHeaderParam(key, data, maxLength) {
-  const list = [];
+  const list2 = [];
   let encodedStr = typeof data === "string" ? data : (data || "").toString();
   let chr;
   let line;
@@ -56828,13 +56828,13 @@ function buildHeaderParam(key, data, maxLength) {
       ];
     }
     encodedStr = encodedStr.replace(new RegExp(".{" + maxLength + "}", "g"), (str2) => {
-      list.push({
+      list2.push({
         line: str2
       });
       return "";
     });
     if (encodedStr) {
-      list.push({
+      list2.push({
         line: encodedStr
       });
     }
@@ -56864,7 +56864,7 @@ function buildHeaderParam(key, data, maxLength) {
         chr = chr === " " ? chr : safeEncodeURIComponent(chr);
         if (chr !== encodedStr[i]) {
           if ((safeEncodeURIComponent(line) + chr).length >= maxLength) {
-            list.push({
+            list2.push({
               line,
               encoded
             });
@@ -56879,7 +56879,7 @@ function buildHeaderParam(key, data, maxLength) {
         }
       }
       if ((line + chr).length >= maxLength) {
-        list.push({
+        list2.push({
           line,
           encoded
         });
@@ -56895,13 +56895,13 @@ function buildHeaderParam(key, data, maxLength) {
       }
     }
     if (line) {
-      list.push({
+      list2.push({
         line,
         encoded
       });
     }
   }
-  return list.map((item, i2) => ({
+  return list2.map((item, i2) => ({
     // encoded lines: {name}*{part}*
     // unencoded lines: {name}*{part}
     // if any line needs to be encoded then the first line (part==0) is always encoded
@@ -57643,10 +57643,10 @@ function _handleAddress(tokens, from, to) {
   }
   return address;
 }
-function _mergeNameFragments(list) {
+function _mergeNameFragments(list2) {
   const merged = [];
-  for (let i = list.length - 1; i >= 0; i--) {
-    const current = list[i];
+  for (let i = list2.length - 1; i >= 0; i--) {
+    const current = list2[i];
     const next = merged.length ? merged[merged.length - 1] : null;
     if (next && current.address === "" && current.name && !current.group && next.address && next.name) {
       next.name = current.name + ", " + next.name;
@@ -57696,8 +57696,8 @@ function addressparser(str2, options) {
   const parsedAddresses = _parseAddressList(str2);
   if (options?.flatten) {
     const flatAddresses = [];
-    const walkAddressList = (list) => {
-      list.forEach((entry) => {
+    const walkAddressList = (list2) => {
+      list2.forEach((entry) => {
         if (entry.group) {
           return walkAddressList(entry.group);
         }
@@ -57855,10 +57855,10 @@ var init_addressparser = __esm({
           this.checkChar(str2.charAt(i), i);
         }
         this._closeText(len);
-        const list = this.list;
-        const slots = list.slots;
+        const list2 = this.list;
+        const slots = list2.slots;
         let kept = 0;
-        for (let i = 0, count = list.length; i < count; i++) {
+        for (let i = 0, count = list2.length; i < count; i++) {
           const kind = slots[i * 3];
           let start = slots[i * 3 + 1];
           let end = slots[i * 3 + 2];
@@ -57867,7 +57867,7 @@ var init_addressparser = __esm({
             if (!value) {
               continue;
             }
-            list.cleaned.set(kept, value);
+            list2.cleaned.set(kept, value);
           } else if (!(kind & TOKEN_OPERATOR)) {
             while (start < end && _isSpaceCode(str2.charCodeAt(start))) {
               start++;
@@ -57884,8 +57884,8 @@ var init_addressparser = __esm({
           slots[kept * 3 + 2] = end;
           kept++;
         }
-        list.length = kept;
-        return list;
+        list2.length = kept;
+        return list2;
       }
       /**
        * Ends the text run being collected, if there is one
@@ -58834,17 +58834,17 @@ var init_mime_node = __esm({
        * @return SMTP envelope in the form of {from: 'from@example.com', to: ['to@example.com']}
        */
       setEnvelope(envelope) {
-        let list;
+        let list2;
         this._envelope = {
           from: false,
           to: []
         };
         if (envelope.from) {
-          list = [];
-          this._convertAddresses(this._parseEnvelopeAddresses(envelope.from), list);
-          list = list.filter((address) => address && address.address);
-          if (list.length && list[0]) {
-            this._envelope.from = list[0].address;
+          list2 = [];
+          this._convertAddresses(this._parseEnvelopeAddresses(envelope.from), list2);
+          list2 = list2.filter((address) => address && address.address);
+          if (list2.length && list2[0]) {
+            this._envelope.from = list2[0].address;
           }
         }
         const seenRecipients = /* @__PURE__ */ new Set();
@@ -58895,11 +58895,11 @@ var init_mime_node = __esm({
         const seenRecipients = /* @__PURE__ */ new Set();
         const recipients2 = [];
         this._headers.forEach((header2) => {
-          const list = [];
+          const list2 = [];
           if (header2.key === "From" || !envelope.from && ["Reply-To", "Sender"].includes(header2.key)) {
-            this._convertAddresses(this._parseAddresses(header2.value), list);
-            if (list.length && list[0]) {
-              envelope.from = list[0].address;
+            this._convertAddresses(this._parseAddresses(header2.value), list2);
+            if (list2.length && list2[0]) {
+              envelope.from = list2[0].address;
             }
           } else if (["To", "Cc", "Bcc"].includes(header2.key)) {
             this._convertAddresses(this._parseAddresses(header2.value), recipients2, seenRecipients);
@@ -59053,10 +59053,10 @@ var init_mime_node = __esm({
         const flattened = [];
         const seen = /* @__PURE__ */ new WeakSet();
         const stack = [];
-        const enter = (list) => {
-          if (!seen.has(list)) {
-            seen.add(list);
-            stack.push({ list, pos: 0 });
+        const enter = (list2) => {
+          if (!seen.has(list2)) {
+            seen.add(list2);
+            stack.push({ list: list2, pos: 0 });
           }
         };
         enter(Array.isArray(addresses2) ? addresses2 : [addresses2]);
@@ -61518,8 +61518,8 @@ import tls2 from "node:tls";
 import os2 from "node:os";
 import crypto6 from "node:crypto";
 import { PassThrough as PassThrough4 } from "node:stream";
-function shuffle(list) {
-  const result = list.slice();
+function shuffle(list2) {
+  const result = list2.slice();
   for (let i = result.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [result[i], result[j]] = [result[j], result[i]];
@@ -67936,8 +67936,8 @@ function writeDestructiveAudit(ctx, report) {
 function countDeltaWarning(d) {
   if (d.status !== "over" || d.expected === null) return null;
   const extra = (d.observed ?? 0) - d.expected;
-  const where = d.account ? `"${d.mailbox}" in account "${d.account}"` : `"${d.mailbox}"`;
-  return `\u26A0\uFE0F Effect mismatch in ${where}: ${d.observed} message(s) left the mailbox but only ${d.expected} were operated on (count ${d.before} \u2192 ${d.after}). ${extra} message(s) are unaccounted for. Anything else removing mail from this mailbox at the same moment \u2014 a Mail rule, a server-side filter, another client, an IMAP expunge \u2014 reads the same way, so rule that out first. If nothing else was touching it, this is the signature of https://github.com/sweetrb/apple-mail-mcp/issues/155 \u2014 please report it there, and set ${AUDIT_LOG_ENV}=/path/to/audit.ndjson to capture which messages disappeared.`;
+  const where2 = d.account ? `"${d.mailbox}" in account "${d.account}"` : `"${d.mailbox}"`;
+  return `\u26A0\uFE0F Effect mismatch in ${where2}: ${d.observed} message(s) left the mailbox but only ${d.expected} were operated on (count ${d.before} \u2192 ${d.after}). ${extra} message(s) are unaccounted for. Anything else removing mail from this mailbox at the same moment \u2014 a Mail rule, a server-side filter, another client, an IMAP expunge \u2014 reads the same way, so rule that out first. If nothing else was touching it, this is the signature of https://github.com/sweetrb/apple-mail-mcp/issues/155 \u2014 please report it there, and set ${AUDIT_LOG_ENV}=/path/to/audit.ndjson to capture which messages disappeared.`;
 }
 function reconciliationWarnings(report) {
   return report.countDeltas.map((d) => countDeltaWarning(d)).filter((w) => w !== null);
@@ -68372,10 +68372,10 @@ Partial result. Stopped by ${describeStop(signal)} before finishing ${timedOut.l
 }
 function omittedNote(omitted, merged) {
   if (omitted.length === 0) return "";
-  const list = omitted.map((o) => `UID ${o.uid} in "${o.mailbox}" (${o.id})`).join(", ");
+  const list2 = omitted.map((o) => `UID ${o.uid} in "${o.mailbox}" (${o.id})`).join(", ");
   return `
 
-Partial result. ${omitted.length} message(s) ${merged ? "that may belong" : "that belong"} on this page could not be read and are not listed: ${list}. Reason: ${[...new Set(omitted.map((o) => o.reason))].join("; ")}. get-message or get-message-headers with those ids may still read them.`;
+Partial result. ${omitted.length} message(s) ${merged ? "that may belong" : "that belong"} on this page could not be read and are not listed: ${list2}. Reason: ${[...new Set(omitted.map((o) => o.reason))].join("; ")}. get-message or get-message-headers with those ids may still read them.`;
 }
 function describeMailboxFailure(error63) {
   const raw = errText2(error63);
@@ -69052,11 +69052,11 @@ function matchMailbox(boxes, name2) {
   return { kind: "none" };
 }
 function ambiguousMailboxError(name2, candidates, accountLabel) {
-  const where = accountLabel ? ` on IMAP account ${accountLabel}` : "";
+  const where2 = accountLabel ? ` on IMAP account ${accountLabel}` : "";
   const listed = candidates.map((c) => `"${c}"`).join(" and ");
   const indistinguishable = new Set(candidates.map(mailboxNameKey)).size === 1;
   const hint = indistinguishable ? " They differ only in letter case or Unicode normalization (precomposed vs decomposed accents), so no typed name can tell them apart. Rename one of them." : " Pass the full path.";
-  return `Mailbox "${name2}" is ambiguous${where} \u2014 it matches ${listed}.${hint}`;
+  return `Mailbox "${name2}" is ambiguous${where2} \u2014 it matches ${listed}.${hint}`;
 }
 async function findMailboxPathOrThrow(client, name2) {
   const res = await resolveMailbox(client, name2);
@@ -90211,8 +90211,8 @@ var contributors = {
 function aggregateChecks(schema) {
   const agg = {};
   const def = schema._zod.def;
-  const list = schema._zod.traits.has("$ZodCheck") ? [schema, ...def.checks ?? []] : def.checks ?? [];
-  for (const ch of list)
+  const list2 = schema._zod.traits.has("$ZodCheck") ? [schema, ...def.checks ?? []] : def.checks ?? [];
+  for (const ch of list2)
     contributors[ch._zod.def.check]?.(agg, ch._zod.def);
   const bag = schema._zod.bag;
   if (bag.minimum !== void 0)
@@ -101745,7 +101745,7 @@ function bodyMatchClause(text) {
     args: [match.query]
   };
 }
-function scopeCoverage(db, fromSql, where, args) {
+function scopeCoverage(db, fromSql, where2, args) {
   const row = db.prepare(
     `SELECT
          sum(d.id IS NULL) AS missing,
@@ -101755,7 +101755,7 @@ function scopeCoverage(db, fromSql, where, args) {
          sum(d.state = ${DocState.unreadable}) AS unreadable
        ${fromSql}
        LEFT JOIN ${ATTACH_ALIAS}.docs d ON d.id = m.ROWID
-       WHERE ${where.join(" AND ")}`
+       WHERE ${where2.join(" AND ")}`
   ).get(...args);
   const walked = db.prepare(`SELECT 1 AS x FROM ${ATTACH_ALIAS}.meta WHERE key = 'lastFullWalk'`).get() !== void 0;
   const missing = Number(row?.missing ?? 0);
@@ -102403,7 +102403,7 @@ function searchOpenIndex(db, features, params) {
   if ([dateFrom, dateTo].some((t) => t !== void 0 && !Number.isFinite(t))) {
     return { ok: false, reason: "unreadable date filter" };
   }
-  const where = ["m.deleted = 0"];
+  const where2 = ["m.deleted = 0"];
   const args = [];
   let scopedPath;
   if (params.mailbox !== void 0 && params.mailbox !== "") {
@@ -102412,16 +102412,16 @@ function searchOpenIndex(db, features, params) {
     scopedPath = resolved.path;
     const ids = JSON.stringify(resolved.ids);
     if (features.labels) {
-      where.push(
+      where2.push(
         `(m.mailbox IN (SELECT value FROM json_each(?)) OR m.ROWID IN (SELECT message_id FROM labels WHERE mailbox_id IN (SELECT value FROM json_each(?))))`
       );
       args.push(ids, ids);
     } else {
-      where.push(`m.mailbox IN (SELECT value FROM json_each(?))`);
+      where2.push(`m.mailbox IN (SELECT value FROM json_each(?))`);
       args.push(ids);
     }
   } else {
-    where.push(`mb.url LIKE ?`);
+    where2.push(`mb.url LIKE ?`);
     args.push(`%://${params.accountId}/%`);
   }
   const subjectExpr = features.subjectPrefix ? `COALESCE(m.subject_prefix, '') || COALESCE(s.subject, '')` : `COALESCE(s.subject, '')`;
@@ -102435,28 +102435,28 @@ function searchOpenIndex(db, features, params) {
     return `lower(${expr}) LIKE ? ESCAPE '\\'`;
   };
   if (params.query) {
-    where.push(`(${contains(subjectExpr, params.query)} OR ${contains(senderExpr, params.query)})`);
+    where2.push(`(${contains(subjectExpr, params.query)} OR ${contains(senderExpr, params.query)})`);
   }
-  if (params.subject) where.push(contains(subjectExpr, params.subject));
-  if (params.from) where.push(contains(senderExpr, params.from));
+  if (params.subject) where2.push(contains(subjectExpr, params.subject));
+  if (params.from) where2.push(contains(senderExpr, params.from));
   if (params.isRead !== void 0) {
-    where.push(`m.read = ?`);
+    where2.push(`m.read = ?`);
     args.push(params.isRead ? 1 : 0);
   }
   if (params.isFlagged !== void 0) {
-    where.push(`m.flagged = ?`);
+    where2.push(`m.flagged = ?`);
     args.push(params.isFlagged ? 1 : 0);
   }
   if (dateFrom !== void 0) {
-    where.push(`m.date_received >= ?`);
+    where2.push(`m.date_received >= ?`);
     args.push(Math.floor(dateFrom / 1e3));
   }
   if (dateTo !== void 0) {
-    where.push(`m.date_received <= ?`);
+    where2.push(`m.date_received <= ?`);
     args.push(Math.floor(dateTo / 1e3));
   }
   if (params.rowIds) {
-    where.push(`m.ROWID IN (SELECT value FROM json_each(?))`);
+    where2.push(`m.ROWID IN (SELECT value FROM json_each(?))`);
     args.push(JSON.stringify(params.rowIds));
   }
   const fromSql = `
@@ -102466,8 +102466,8 @@ function searchOpenIndex(db, features, params) {
     LEFT JOIN mailboxes mb ON m.mailbox = mb.ROWID`;
   const clause = params.body ? bodyMatchClause(params.body.text) : void 0;
   if (clause && "reason" in clause) return { ok: false, reason: clause.reason };
-  const bodyCoverage = clause ? scopeCoverage(db, fromSql, where, args) : void 0;
-  const filterWhere = [...where];
+  const bodyCoverage = clause ? scopeCoverage(db, fromSql, where2, args) : void 0;
+  const filterWhere = [...where2];
   const filterArgs = [...args];
   if (clause) {
     filterWhere.push(clause.sql);
@@ -102972,9 +102972,9 @@ function sqliteModule() {
 function errText4(err) {
   return err instanceof Error ? err.message : String(err);
 }
-function noteError(where, err) {
-  lastError = `${new Date(clock.now()).toISOString()} ${where}: ${errText4(err)}`;
-  console.error(`[bodyIndex] ${where}: ${errText4(err)}`);
+function noteError(where2, err) {
+  lastError = `${new Date(clock.now()).toISOString()} ${where2}: ${errText4(err)}`;
+  console.error(`[bodyIndex] ${where2}: ${errText4(err)}`);
   try {
     writer?.setMeta("lastError", lastError);
   } catch {
@@ -103423,9 +103423,9 @@ function describeUnscopedMiss(id, raw) {
   if (covIdx === -1) return raw.trim();
   const base2 = raw.slice(0, covIdx).trim();
   const [skippedRaw = "", budgetRaw = "", stalledRaw = "", unreachedRaw = ""] = raw.slice(covIdx + BYID_COVERAGE_MARKER.length).split(DIAG_FIELD_SEP);
-  const list = (s) => s.split(DIAG_ITEM_SEP).map((x) => x.trim()).filter(Boolean);
-  const skipped = list(skippedRaw);
-  const unreached = list(unreachedRaw);
+  const list2 = (s) => s.split(DIAG_ITEM_SEP).map((x) => x.trim()).filter(Boolean);
+  const skipped = list2(skippedRaw);
+  const unreached = list2(unreachedRaw);
   const budgetHit = budgetRaw.trim() === "true";
   const probeStalled = stalledRaw.trim() === "true";
   const incompleteSource = base2 === "Source lookup incomplete";
@@ -105228,9 +105228,9 @@ ${indent}end try${this.sanitizeFragment("_uacct", indent)}${this.sanitizeFragmen
       ...accounts.filter((a) => a.name.toLowerCase() === name2 && !matches.includes(a))
     ];
     if (candidates.length > 1) {
-      const list = candidates.map((a) => `${a.name} <${a.email}>`).join(", ");
+      const list2 = candidates.map((a) => `${a.name} <${a.email}>`).join(", ");
       throw new Error(
-        `Account "${account}" is ambiguous (${list}). Mail can address an account only by name, so rename one of them in Mail first.`
+        `Account "${account}" is ambiguous (${list2}). Mail can address an account only by name, so rename one of them in Mail first.`
       );
     }
     return matches[0].name;
@@ -105718,19 +105718,19 @@ ${indent}end try${this.sanitizeFragment("_uacct", indent)}${this.sanitizeFragmen
       this.scopedByIdScript(loc.account, loc.mailbox, id, innerAction, exactPathOnly),
       { timeoutMs: READ_ONLY_BYID_TIMEOUT_MS }
     );
-    const where = `${loc.account} / ${loc.mailbox}`;
+    const where2 = `${loc.account} / ${loc.mailbox}`;
     if (result.success && result.output.startsWith(MAIL_NOT_RUNNING_MARKER) || !result.success && !result.timedOut && looksLikeMailNotRunning(result.error)) {
       this.lastMessageLookupError = mailNotRunningForId(id);
       return { kind: "done" };
     }
     if (!result.success) {
-      console.error(`Failed to read message ${id} from ${where}: ${result.error}`);
+      console.error(`Failed to read message ${id} from ${where2}: ${result.error}`);
       if (result.timedOut) {
         this.lastMessageLookupError = timedOutResolvingId(id);
         return { kind: "done" };
       }
       if (loc.explicit) {
-        this.lastMessageLookupError = `Could not read message ${Number(id)} from ${where}: ${result.error ?? "AppleScript error"}`;
+        this.lastMessageLookupError = `Could not read message ${Number(id)} from ${where2}: ${result.error ?? "AppleScript error"}`;
         return { kind: "done" };
       }
       this.forgetLocation(id);
@@ -105754,9 +105754,9 @@ ${indent}end try${this.sanitizeFragment("_uacct", indent)}${this.sanitizeFragmen
     } else if (reason === "nomailbox") {
       this.lastMessageLookupError = `Mailbox "${loc.mailbox}" not found in account "${loc.account}" \u2014 message ${Number(id)} was not looked up. Check the names with list-mailboxes, or omit account/mailbox to scan every mailbox.`;
     } else if (reason.startsWith("error:")) {
-      this.lastMessageLookupError = `Could not read message ${Number(id)} from ${where}: ${reason.slice("error:".length)}`;
+      this.lastMessageLookupError = `Could not read message ${Number(id)} from ${where2}: ${reason.slice("error:".length)}`;
     } else {
-      this.lastMessageLookupError = `Message ${Number(id)} not found in ${where} \u2014 it may have been moved or deleted. Re-list or search to get its current id, or omit account/mailbox to scan every mailbox.`;
+      this.lastMessageLookupError = `Message ${Number(id)} not found in ${where2} \u2014 it may have been moved or deleted. Re-list or search to get its current id, or omit account/mailbox to scan every mailbox.`;
     }
     return { kind: "done" };
   }
@@ -109170,8 +109170,10 @@ ${actionStmts.join("\n")}
 
 // src/index.ts
 init_smtpMailer();
-import { readFileSync as readFileSync6, writeFileSync as writeFileSync5 } from "fs";
-import { join as joinPath } from "path";
+import { readFileSync as readFileSync7, writeFileSync as writeFileSync6 } from "fs";
+import { extname as extname2, join as joinPath } from "path";
+import { tmpdir as tmpdir4 } from "os";
+import { randomUUID as randomUUID4 } from "crypto";
 
 // src/tools/compose.ts
 init_imapClient();
@@ -110330,8 +110332,8 @@ function formatMergedRows(rows, showReadState = true) {
     const subject = typeof m.subject === "string" ? m.subject : "(no subject)";
     const sender = typeof m.sender === "string" ? m.sender : "(unknown)";
     const state = showReadState ? ` [${m.isRead ? "read" : "unread"}]` : "";
-    const where = locationSuffix(m.mailbox, m.account);
-    return `  - ID: ${String(m.id)} | ${date5} | ${subject} (from: ${sender})${state}${where}`;
+    const where2 = locationSuffix(m.mailbox, m.account);
+    return `  - ID: ${String(m.id)} | ${date5} | ${subject} (from: ${sender})${state}${where2}`;
   }).join("\n");
 }
 
@@ -110953,8 +110955,389 @@ function withSafetyAnnotations(name2, annotations) {
 }
 
 // src/utils/confirmationGate.ts
-import { createHash as createHash2, randomBytes } from "node:crypto";
-import { execFile } from "node:child_process";
+import { createHash as createHash3, randomBytes } from "node:crypto";
+
+// src/utils/confirmDialog.ts
+import { createHash as createHash2 } from "node:crypto";
+import { execFile, spawn as spawn2 } from "node:child_process";
+import { existsSync as existsSync8, mkdirSync as mkdirSync4, readFileSync as readFileSync6, readdirSync as readdirSync8, renameSync as renameSync3, rmSync as rmSync4 } from "node:fs";
+import { homedir as homedir9 } from "node:os";
+import { join as join13 } from "node:path";
+import { fileURLToPath as fileURLToPath2 } from "node:url";
+
+// src/utils/operationDetails.ts
+import { mkdtempSync as mkdtempSync3, rmSync as rmSync3, writeFileSync as writeFileSync5 } from "node:fs";
+import { tmpdir as tmpdir3 } from "node:os";
+import { basename as basename3, extname, join as join12 } from "node:path";
+var noLookup = async () => ({ error: "not available" });
+var IMAGE_EXTENSIONS = /* @__PURE__ */ new Set([
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".heic",
+  ".webp",
+  ".bmp",
+  ".tiff"
+]);
+function isImageName(name2) {
+  return IMAGE_EXTENSIONS.has(extname(name2).toLowerCase());
+}
+function summarize(text, edge = 30) {
+  if (!text) return void 0;
+  const clean = text.replace(/[\uFFFC\u200B-\u200D\uFEFF]/g, "").replace(/\s+/g, " ");
+  const chars = Array.from(clean.trim());
+  if (chars.length === 0) return void 0;
+  if (chars.length <= edge * 2 + 6) return chars.join("");
+  return `${chars.slice(0, edge).join("")} \u2026\u2026 ${chars.slice(-edge).join("")}`;
+}
+function list(value) {
+  if (Array.isArray(value)) return value.map(String).filter(Boolean);
+  if (typeof value === "string" && value) return [value];
+  return [];
+}
+function push(fields, label, value) {
+  const items = list(value);
+  if (items.length > 0) fields.push({ label, value: items.join(", ") });
+}
+function outgoingAttachments(value) {
+  if (!Array.isArray(value) || value.length === 0) return {};
+  const names = [];
+  let image;
+  for (const item of value) {
+    if (typeof item === "string") {
+      names.push(basename3(item));
+      if (!image && isImageName(item)) image = { name: basename3(item), path: item };
+    } else if (item && typeof item === "object") {
+      const { filename, contentBase64 } = item;
+      const name2 = filename ?? "(unnamed)";
+      names.push(name2);
+      if (!image && filename && isImageName(filename) && typeof contentBase64 === "string") {
+        try {
+          const dir = mkdtempSync3(join12(tmpdir3(), "amm-confirm-"));
+          const path3 = join12(dir, `preview${extname(filename)}`);
+          writeFileSync5(path3, Buffer.from(contentBase64, "base64"), { mode: 384 });
+          image = { name: name2, path: path3, temp: dir };
+        } catch {
+        }
+      }
+    }
+  }
+  return { field: { label: "\u9644\u4EF6", value: `${names.length} \u4E2A\uFF1A${names.join(", ")}` }, image };
+}
+function messageFields(fields, info, prefix = "") {
+  if (info.error) {
+    fields.push({ label: `${prefix}\u90AE\u4EF6`, value: `\uFF08\u65E0\u6CD5\u8BFB\u53D6\uFF1A${info.error}\uFF09` });
+    return;
+  }
+  push(fields, `${prefix}\u4E3B\u9898`, info.subject || "\uFF08\u65E0\u4E3B\u9898\uFF09");
+  push(fields, `${prefix}\u53D1\u4EF6\u4EBA`, info.from);
+  push(fields, `${prefix}\u6536\u4EF6\u4EBA`, info.to);
+  push(fields, `${prefix}\u6284\u9001`, info.cc);
+  push(fields, `${prefix}\u65E5\u671F`, info.date);
+}
+function where(args, mailboxKey, accountKey) {
+  const mailbox = typeof args[mailboxKey] === "string" ? args[mailboxKey] : "";
+  const account = typeof args[accountKey] === "string" ? args[accountKey] : "";
+  return [account, mailbox].filter(Boolean).join(" / ");
+}
+async function describeOperation(tool, args, lookup, options) {
+  const fields = [];
+  const tempFiles = [];
+  const done = (d) => ({
+    ...d,
+    fields,
+    ...tempFiles.length > 0 ? { tempFiles } : {}
+  });
+  const withOutgoing = (value) => {
+    const out = outgoingAttachments(value);
+    if (out.field) fields.push(out.field);
+    if (out.image?.temp) tempFiles.push(out.image.temp);
+    return out.image && options.withImage ? { imagePath: out.image.path, imageCaption: `\u56FE\u7247\u9644\u4EF6\u9884\u89C8\uFF1A${out.image.name}` } : {};
+  };
+  const readOne = async (id, account, mailbox, body = true) => {
+    const info = await lookup(id, {
+      account: typeof account === "string" ? account : void 0,
+      mailbox: typeof mailbox === "string" ? mailbox : void 0,
+      withBody: body,
+      withImage: options.withImage
+    });
+    if (info.image) tempFiles.push(info.image.path);
+    return info;
+  };
+  const imageOf = (info) => info.image ? { imagePath: info.image.path, imageCaption: `\u90AE\u4EF6\u56FE\u7247\u9884\u89C8\uFF1A${info.image.name}` } : {};
+  switch (tool) {
+    case "send-email": {
+      push(fields, "\u53D1\u4EF6\u8D26\u53F7", args.account ?? "\u9ED8\u8BA4\u8D26\u53F7");
+      push(fields, "\u6536\u4EF6\u4EBA", args.to);
+      push(fields, "\u6284\u9001", args.cc);
+      push(fields, "\u5BC6\u9001", args.bcc);
+      push(fields, "\u4E3B\u9898", args.subject);
+      const image = withOutgoing(args.attachments);
+      return done({
+        action: "\u5373\u5C06\u53D1\u9001\u90AE\u4EF6",
+        question: "\u786E\u5B9A\u8981\u53D1\u9001\u4E0B\u9762\u8FD9\u5C01\u90AE\u4EF6\u5417\uFF1F\u53D1\u51FA\u540E\u65E0\u6CD5\u64A4\u56DE\u3002",
+        summary: summarize(args.body),
+        ...image
+      });
+    }
+    case "send-serial-email": {
+      const recipients2 = Array.isArray(args.recipients) ? args.recipients.map((r) => r.email ?? "") : [];
+      push(fields, "\u53D1\u4EF6\u8D26\u53F7", args.account ?? "\u9ED8\u8BA4\u8D26\u53F7");
+      fields.push({
+        label: "\u6536\u4EF6\u4EBA",
+        value: `${recipients2.length} \u4EBA\uFF0C\u6BCF\u4EBA\u5355\u72EC\u4E00\u5C01\uFF1A${recipients2.slice(0, 8).join(", ")}${recipients2.length > 8 ? " \u2026" : ""}`
+      });
+      push(fields, "\u4E3B\u9898\u6A21\u677F", args.subject);
+      return done({
+        action: `\u5373\u5C06\u7FA4\u53D1 ${recipients2.length} \u5C01\u90AE\u4EF6`,
+        question: `\u786E\u5B9A\u8981\u7ED9 ${recipients2.length} \u4F4D\u6536\u4EF6\u4EBA\u9010\u4E2A\u53D1\u9001\u4E0B\u9762\u7684\u90AE\u4EF6\u5417\uFF1F\u53D1\u51FA\u540E\u65E0\u6CD5\u64A4\u56DE\u3002`,
+        summary: summarize(args.body)
+      });
+    }
+    case "reply-to-message": {
+      const all = args.replyAll === true;
+      const info = await readOne(String(args.id), args.account, args.mailbox, false);
+      messageFields(fields, info, "\u539F\u90AE\u4EF6");
+      fields.push({
+        label: "\u56DE\u590D\u5BF9\u8C61",
+        value: all ? "\u539F\u53D1\u4EF6\u4EBA\u53CA\u6240\u6709\u6536\u4EF6\u4EBA\uFF08\u56DE\u590D\u5168\u90E8\uFF09" : "\u539F\u53D1\u4EF6\u4EBA"
+      });
+      const image = withOutgoing(args.attachments);
+      return done({
+        action: all ? "\u5373\u5C06\u56DE\u590D\u5168\u90E8" : "\u5373\u5C06\u56DE\u590D\u90AE\u4EF6",
+        question: all ? "\u786E\u5B9A\u8981\u5BF9\u4E0B\u9762\u8FD9\u5C01\u90AE\u4EF6\u201C\u56DE\u590D\u5168\u90E8\u201D\u5417\uFF1F\u6240\u6709\u539F\u6536\u4EF6\u4EBA\u90FD\u4F1A\u6536\u5230\uFF0C\u53D1\u51FA\u540E\u65E0\u6CD5\u64A4\u56DE\u3002" : "\u786E\u5B9A\u8981\u56DE\u590D\u4E0B\u9762\u8FD9\u5C01\u90AE\u4EF6\u5417\uFF1F\u53D1\u51FA\u540E\u65E0\u6CD5\u64A4\u56DE\u3002",
+        summary: summarize(args.body),
+        ...image
+      });
+    }
+    case "forward-message": {
+      push(fields, "\u8F6C\u53D1\u7ED9", args.to);
+      const info = await readOne(String(args.id), args.account, args.mailbox, !args.body);
+      messageFields(fields, info, "\u539F\u90AE\u4EF6");
+      const image = withOutgoing(args.attachments);
+      return done({
+        action: "\u5373\u5C06\u8F6C\u53D1\u90AE\u4EF6",
+        question: "\u786E\u5B9A\u8981\u628A\u4E0B\u9762\u8FD9\u5C01\u90AE\u4EF6\u8F6C\u53D1\u51FA\u53BB\u5417\uFF1F\u53D1\u51FA\u540E\u65E0\u6CD5\u64A4\u56DE\u3002",
+        summary: summarize(args.body || info.body),
+        ...image.imagePath ? image : imageOf(info)
+      });
+    }
+    case "delete-message":
+    case "move-message": {
+      const info = await readOne(String(args.id), void 0, void 0);
+      messageFields(fields, info);
+      const moving = tool === "move-message";
+      if (moving) fields.push({ label: "\u79FB\u52A8\u5230", value: where(args, "mailbox", "account") });
+      return done({
+        action: moving ? "\u5373\u5C06\u79FB\u52A8\u90AE\u4EF6" : "\u5373\u5C06\u5220\u9664\u90AE\u4EF6",
+        question: moving ? "\u786E\u5B9A\u8981\u628A\u4E0B\u9762\u8FD9\u5C01\u90AE\u4EF6\u79FB\u52A8\u5230\u5176\u4ED6\u90AE\u7BB1\u5417\uFF1F" : "\u786E\u5B9A\u8981\u5220\u9664\u4E0B\u9762\u8FD9\u5C01\u90AE\u4EF6\u5417\uFF1F\u90AE\u4EF6\u4F1A\u79FB\u5230\u5E9F\u7EB8\u7BD3\u3002",
+        summary: summarize(info.body),
+        ...imageOf(info)
+      });
+    }
+    case "batch-delete-messages":
+    case "batch-move-messages": {
+      const ids = list(args.ids);
+      const shown = ids.slice(0, 5);
+      const infos = [];
+      for (const id of shown) {
+        infos.push(await readOne(id, args.sourceAccount, args.sourceMailbox, false));
+      }
+      shown.forEach((id, i) => {
+        const info = infos[i];
+        fields.push({
+          label: `\u7B2C ${i + 1} \u5C01`,
+          value: info.error ? `${id}\uFF08\u65E0\u6CD5\u8BFB\u53D6\uFF1A${info.error}\uFF09` : `${info.subject || "\uFF08\u65E0\u4E3B\u9898\uFF09"} \u2014 ${info.from ?? ""}`
+        });
+      });
+      if (ids.length > shown.length) {
+        fields.push({ label: "\u5176\u4F59", value: `\u8FD8\u6709 ${ids.length - shown.length} \u5C01\u672A\u5217\u51FA` });
+      }
+      const from = where(args, "sourceMailbox", "sourceAccount");
+      if (from) fields.push({ label: "\u6240\u5728\u90AE\u7BB1", value: from });
+      const moving = tool === "batch-move-messages";
+      if (moving) fields.push({ label: "\u79FB\u52A8\u5230", value: where(args, "mailbox", "account") });
+      return done({
+        action: moving ? `\u5373\u5C06\u6279\u91CF\u79FB\u52A8 ${ids.length} \u5C01\u90AE\u4EF6` : `\u5373\u5C06\u6279\u91CF\u5220\u9664 ${ids.length} \u5C01\u90AE\u4EF6`,
+        question: moving ? `\u786E\u5B9A\u8981\u79FB\u52A8\u8FD9 ${ids.length} \u5C01\u90AE\u4EF6\u5417\uFF1F` : `\u786E\u5B9A\u8981\u5220\u9664\u8FD9 ${ids.length} \u5C01\u90AE\u4EF6\u5417\uFF1F\u90AE\u4EF6\u4F1A\u79FB\u5230\u5E9F\u7EB8\u7BD3\u3002`
+      });
+    }
+    case "delete-mailbox":
+      push(fields, "\u90AE\u7BB1\u6587\u4EF6\u5939", args.name);
+      push(fields, "\u8D26\u53F7", args.account);
+      return done({
+        action: "\u5373\u5C06\u5220\u9664\u90AE\u7BB1\u6587\u4EF6\u5939",
+        question: "\u786E\u5B9A\u8981\u5220\u9664\u8FD9\u4E2A\u90AE\u7BB1\u6587\u4EF6\u5939\u5417\uFF1F\u91CC\u9762\u7684\u90AE\u4EF6\u4F1A\u4E00\u8D77\u5220\u9664\u3002"
+      });
+    case "delete-smart-mailbox":
+      push(fields, "\u667A\u80FD\u90AE\u7BB1", args.name);
+      return done({ action: "\u5373\u5C06\u5220\u9664\u667A\u80FD\u90AE\u7BB1", question: "\u786E\u5B9A\u8981\u5220\u9664\u8FD9\u4E2A\u667A\u80FD\u90AE\u7BB1\u5417\uFF1F" });
+    case "delete-rule":
+      push(fields, "\u89C4\u5219", args.name);
+      return done({ action: "\u5373\u5C06\u5220\u9664\u90AE\u4EF6\u89C4\u5219", question: "\u786E\u5B9A\u8981\u5220\u9664\u8FD9\u6761\u89C4\u5219\u5417\uFF1F" });
+    case "enable-rule":
+      push(fields, "\u89C4\u5219", args.name);
+      return done({
+        action: "\u5373\u5C06\u542F\u7528\u90AE\u4EF6\u89C4\u5219",
+        question: "\u786E\u5B9A\u8981\u542F\u7528\u8FD9\u6761\u89C4\u5219\u5417\uFF1F\u89C4\u5219\u53EF\u80FD\u4F1A\u81EA\u52A8\u8F6C\u53D1\u6216\u56DE\u590D\u90AE\u4EF6\u3002"
+      });
+    case "create-rule":
+      push(fields, "\u89C4\u5219", args.name);
+      fields.push({ label: "\u6761\u4EF6", value: JSON.stringify(args.conditions ?? []) });
+      fields.push({ label: "\u52A8\u4F5C", value: JSON.stringify(args.actions ?? []) });
+      return done({
+        action: "\u5373\u5C06\u521B\u5EFA\u90AE\u4EF6\u89C4\u5219",
+        question: "\u786E\u5B9A\u8981\u521B\u5EFA\u8FD9\u6761\u89C4\u5219\u5417\uFF1F\u89C4\u5219\u53EF\u80FD\u4F1A\u81EA\u52A8\u8F6C\u53D1\u3001\u56DE\u590D\u6216\u5220\u9664\u90AE\u4EF6\u3002"
+      });
+    case "delete-template":
+      push(fields, "\u6A21\u677F", args.id);
+      return done({ action: "\u5373\u5C06\u5220\u9664\u90AE\u4EF6\u6A21\u677F", question: "\u786E\u5B9A\u8981\u5220\u9664\u8FD9\u4E2A\u6A21\u677F\u5417\uFF1F" });
+    case "set-account-settings": {
+      push(fields, "\u8D26\u53F7", args.account);
+      for (const [key, value] of Object.entries(args)) {
+        if (key !== "account" && value !== void 0) push(fields, key, String(value));
+      }
+      return done({
+        action: "\u5373\u5C06\u4FEE\u6539\u8D26\u53F7\u8BBE\u7F6E",
+        question: "\u786E\u5B9A\u8981\u4FEE\u6539\u8FD9\u4E2A\u90AE\u4EF6\u8D26\u53F7\u7684\u8BBE\u7F6E\u5417\uFF1F\u505C\u7528\u8D26\u53F7\u4F1A\u505C\u6B62\u6536\u53D1\u90AE\u4EF6\u3002"
+      });
+    }
+    default:
+      for (const [key, value] of Object.entries(args)) {
+        if (value !== void 0) push(fields, key, JSON.stringify(value));
+      }
+      return done({ action: `\u5373\u5C06\u6267\u884C ${tool}`, question: "\u786E\u5B9A\u8981\u6267\u884C\u8FD9\u4E2A\u64CD\u4F5C\u5417\uFF1F" });
+  }
+}
+function detailsText(details) {
+  const lines = [`\u3010${details.action}\u3011`, details.question, ""];
+  for (const f of details.fields) lines.push(`${f.label}\uFF1A${f.value}`);
+  if (details.summary) lines.push("", `\u5185\u5BB9\u6458\u8981\uFF1A${details.summary}`);
+  return lines.join("\n");
+}
+function cleanupDetails(details) {
+  for (const path3 of details.tempFiles ?? []) {
+    try {
+      rmSync3(path3, { recursive: true, force: true });
+    } catch {
+    }
+  }
+}
+
+// src/utils/confirmDialog.ts
+var TIMEOUT_SECONDS = 180;
+var CODE_PATTERN = /^[A-Za-z0-9]{6}$/;
+function swiftSourcePath() {
+  for (const rel of ["../native/ConfirmDialog.swift", "../../native/ConfirmDialog.swift"]) {
+    const path3 = fileURLToPath2(new URL(rel, import.meta.url));
+    if (existsSync8(path3)) return path3;
+  }
+  return void 0;
+}
+var building;
+function nativeDialogBinary() {
+  building ??= new Promise((resolve5) => {
+    const source = swiftSourcePath();
+    if (!source || process.platform !== "darwin") return resolve5(void 0);
+    const hash2 = createHash2("sha256").update(readFileSync6(source)).digest("hex").slice(0, 12);
+    const dir = join13(homedir9(), "Library", "Application Support", "apple-mail-mcp", "bin");
+    const binary = join13(dir, `confirm-dialog-${hash2}`);
+    if (existsSync8(binary)) return resolve5(binary);
+    try {
+      mkdirSync4(dir, { recursive: true });
+    } catch {
+      return resolve5(void 0);
+    }
+    const partial2 = `${binary}.${process.pid}.tmp`;
+    execFile("swiftc", ["-O", "-o", partial2, source], { timeout: 18e4 }, (error63) => {
+      if (error63) return resolve5(void 0);
+      try {
+        renameSync3(partial2, binary);
+        for (const name2 of readdirSync8(dir)) {
+          if (name2.startsWith("confirm-dialog-") && join13(dir, name2) !== binary) {
+            rmSync4(join13(dir, name2), { force: true });
+          }
+        }
+        resolve5(binary);
+      } catch {
+        resolve5(existsSync8(binary) ? binary : void 0);
+      }
+    });
+  });
+  return building;
+}
+function runNative(binary, title, details) {
+  return new Promise((resolve5) => {
+    const env = { ...process.env };
+    delete env.CONFIRM_DIALOG_SNAPSHOT;
+    const child = spawn2(binary, [], { env, stdio: ["pipe", "pipe", "ignore"] });
+    let out = "";
+    const timer = setTimeout(() => child.kill(), (TIMEOUT_SECONDS + 20) * 1e3);
+    child.stdout.on("data", (chunk) => out += String(chunk));
+    child.on("error", () => resolve5("error"));
+    child.on("close", () => {
+      clearTimeout(timer);
+      const word = out.trim();
+      resolve5(
+        word === "APPROVED" ? "approved" : word === "CANCELLED" ? "cancelled" : word === "TIMEOUT" ? "timeout" : "error"
+      );
+    });
+    const shown = { ...details };
+    delete shown.tempFiles;
+    child.stdin.end(JSON.stringify({ title, ...shown, timeoutSeconds: TIMEOUT_SECONDS }));
+  });
+}
+var FALLBACK_SCRIPT = [
+  "on run argv",
+  `set r to display dialog (item 2 of argv) with title (item 1 of argv) default answer "" buttons {"\u53D6\u6D88", "\u786E\u5B9A"} default button "\u786E\u5B9A" cancel button "\u53D6\u6D88" with icon caution giving up after ${TIMEOUT_SECONDS}`,
+  'if gave up of r then return "GAVEUP"',
+  'return "ANSWER:" & text returned of r',
+  "end run"
+];
+function runFallback(title, text) {
+  const args = FALLBACK_SCRIPT.flatMap((line) => ["-e", line]);
+  return new Promise((resolve5) => {
+    execFile(
+      "osascript",
+      [...args, title, text],
+      { timeout: (TIMEOUT_SECONDS + 20) * 1e3 },
+      (error63, stdout, stderr) => {
+        if (error63) {
+          resolve5(String(stderr).includes("-128") ? "cancelled" : "error");
+          return;
+        }
+        const out = String(stdout).trim();
+        if (out === "GAVEUP") return resolve5("timeout");
+        const answer = out.startsWith("ANSWER:") ? out.slice("ANSWER:".length).trim() : "";
+        resolve5(CODE_PATTERN.test(answer) ? "approved" : "retry");
+      }
+    );
+  });
+}
+async function fallbackPrompt(title, details) {
+  let body = `${detailsText(details)}
+
+\u8BF7\u8F93\u5165\u4EFB\u610F 6 \u4F4D\u5B57\u6BCD\u6216\u6570\u5B57\u540E\u70B9\u201C\u786E\u5B9A\u201D\uFF1B\u70B9\u201C\u53D6\u6D88\u201D\u5219\u4E0D\u6267\u884C\u3002`;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const outcome = await runFallback(title, body);
+    if (outcome !== "retry") return outcome;
+    body = `\u26A0\uFE0F \u9700\u8981\u8F93\u5165 6 \u4F4D\u5B57\u6BCD\u6216\u6570\u5B57\u3002
+
+${body}`;
+  }
+  return "cancelled";
+}
+var macDialogPrompt = async (title, details) => {
+  const binary = await nativeDialogBinary();
+  if (binary) {
+    const outcome = await runNative(binary, title, details);
+    if (outcome !== "error") return outcome;
+  }
+  return fallbackPrompt(title, details);
+};
+
+// src/utils/confirmationGate.ts
 var CONFIRMATION_TOKEN_PARAM = "confirmationToken";
 var CONFIRMED_TOOLS = /* @__PURE__ */ new Set([
   ...SENDING_TOOLS,
@@ -110977,9 +111360,9 @@ function requiresConfirmation(tool, args) {
   return true;
 }
 var confirmationTokenSchema = external_exports.string().optional().describe(
-  "Leave empty on the first call. The server then returns a preview and a token instead of acting. Show the preview to the user; only after the user explicitly approves, call again with identical arguments plus this token. The user must then also type a 6-digit code into a macOS dialog before anything happens."
+  "Leave empty on the first call. The server then returns a preview and a token instead of acting. Show the preview to the user; only after the user explicitly approves, call again with identical arguments plus this token. The user must then also type a 6-character code into a macOS window before anything happens."
 );
-var CONFIRMATION_NOTE = "\nConfirmation: this tool never acts on the first call. It returns a preview and a confirmationToken; ask the user to approve that preview, then repeat the call with the same arguments and the token. The user must also enter a 6-digit code in a macOS dialog.";
+var CONFIRMATION_NOTE = "\nConfirmation: this tool never acts on the first call. It returns a preview and a confirmationToken; ask the user to approve that preview, then repeat the call with the same arguments and the token. The user must also enter a 6-character code in a macOS window.";
 var TOKEN_TTL_MS = 10 * 60 * 1e3;
 var MAX_PREVIEW_CHARS = 1500;
 function canonical(value) {
@@ -110996,7 +111379,7 @@ function stripToken(args) {
   return rest;
 }
 function fingerprint(tool, args) {
-  return createHash2("sha256").update(`${tool}
+  return createHash3("sha256").update(`${tool}
 ${canonical(args)}`).digest("hex");
 }
 function buildPreview(tool, args) {
@@ -111021,50 +111404,17 @@ ${shown}`;
   return text.length > MAX_PREVIEW_CHARS ? `${text.slice(0, MAX_PREVIEW_CHARS)}
 \u2026` : text;
 }
-var DIALOG_SCRIPT = [
-  "on run argv",
-  'set r to display dialog (item 2 of argv) with title (item 1 of argv) default answer "" buttons {"\u53D6\u6D88", "\u786E\u8BA4\u6267\u884C"} default button "\u786E\u8BA4\u6267\u884C" cancel button "\u53D6\u6D88" with icon caution giving up after 180',
-  'if gave up of r then return "GAVEUP"',
-  'return "ANSWER:" & text returned of r',
-  "end run"
-];
-function runDialog(title, text) {
-  const args = DIALOG_SCRIPT.flatMap((line) => ["-e", line]);
-  return new Promise((resolve5) => {
-    execFile("osascript", [...args, title, text], { timeout: 2e5 }, (error63, stdout, stderr) => {
-      if (error63) {
-        resolve5(String(stderr).includes("-128") ? "cancelled" : "error");
-        return;
-      }
-      const out = String(stdout).trim();
-      if (out === "GAVEUP") return resolve5("timeout");
-      const answer = out.startsWith("ANSWER:") ? out.slice("ANSWER:".length).trim() : "";
-      resolve5(/^\d{6}$/.test(answer) ? "approved" : "retry");
-    });
-  });
-}
-var macDialogPrompt = async (title, text) => {
-  let body = `${text}
-
-\u8BF7\u8F93\u5165\u4EFB\u610F 6 \u4F4D\u6570\u5B57\u540E\u70B9\u201C\u786E\u8BA4\u6267\u884C\u201D\uFF1B\u70B9\u201C\u53D6\u6D88\u201D\u5219\u4E0D\u6267\u884C\u3002`;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const outcome = await runDialog(title, body);
-    if (outcome !== "retry") return outcome;
-    body = `\u26A0\uFE0F \u9700\u8981\u8F93\u5165 6 \u4F4D\u6570\u5B57\u3002
-
-${body}`;
-  }
-  return "cancelled";
-};
 function refusal(text) {
   return { content: [{ type: "text", text }], isError: true };
 }
 var ConfirmationGate = class {
-  constructor(prompt = macDialogPrompt, now = Date.now) {
+  constructor(prompt = macDialogPrompt, lookup = noLookup, now = Date.now) {
     this.prompt = prompt;
+    this.lookup = lookup;
     this.now = now;
   }
   prompt;
+  lookup;
   now;
   pending = /* @__PURE__ */ new Map();
   queue = Promise.resolve();
@@ -111072,7 +111422,7 @@ var ConfirmationGate = class {
    * Returns null when the call may proceed, or the result to send back instead.
    * `args` still carries the token; the caller strips it before running the tool.
    */
-  async check(tool, args) {
+  async check(tool, args, lookup = this.lookup) {
     if (!requiresConfirmation(tool, args)) return null;
     this.expire();
     const rest = stripToken(args);
@@ -111080,19 +111430,18 @@ var ConfirmationGate = class {
     const token = args[CONFIRMATION_TOKEN_PARAM];
     if (typeof token !== "string" || token === "") {
       const issued = randomBytes(9).toString("base64url");
-      const preview = buildPreview(tool, rest);
-      this.pending.set(issued, {
-        tool,
-        fingerprint: print,
-        preview,
-        expiresAt: this.now() + TOKEN_TTL_MS
-      });
+      const details = await describeOperation(tool, rest, lookup, { withImage: false });
+      cleanupDetails(details);
+      this.pending.set(issued, { tool, fingerprint: print, expiresAt: this.now() + TOKEN_TTL_MS });
       return refusal(
         `NOT EXECUTED \u2014 confirmation required.
 
-${preview}
+${detailsText(details)}
 
-Show this preview to the user and ask whether to proceed. Only if the user explicitly approves, call ${tool} again with exactly the same arguments plus ${CONFIRMATION_TOKEN_PARAM}: "${issued}" (valid 10 minutes, single use). The user will then have to type a 6-digit code into a macOS dialog. If the user declines, do not call again.`
+Arguments:
+${buildPreview(tool, rest)}
+
+Show this to the user and ask whether to proceed. Only if the user explicitly approves, call ${tool} again with exactly the same arguments plus ${CONFIRMATION_TOKEN_PARAM}: "${issued}" (valid 10 minutes, single use). The user will then have to type a 6-character code into a macOS window. If the user declines, do not call again.`
       );
     }
     const entry = this.pending.get(token);
@@ -111102,12 +111451,17 @@ Show this preview to the user and ask whether to proceed. Only if the user expli
         `NOT EXECUTED \u2014 ${CONFIRMATION_TOKEN_PARAM} is unknown, expired, already used, or the arguments changed since it was issued. Call ${tool} again without a token to get a new preview, and get the user's approval again.`
       );
     }
-    const outcome = await (this.queue = this.queue.then(
-      () => this.prompt(`Apple Mail MCP\uFF1A\u786E\u8BA4 ${tool}`, entry.preview),
-      () => this.prompt(`Apple Mail MCP\uFF1A\u786E\u8BA4 ${tool}`, entry.preview)
-    ));
+    const show = async () => {
+      const details = await describeOperation(tool, rest, lookup, { withImage: true });
+      try {
+        return await this.prompt(`Apple Mail MCP \u64CD\u4F5C\u786E\u8BA4\uFF1A${tool}`, details);
+      } finally {
+        cleanupDetails(details);
+      }
+    };
+    const outcome = await (this.queue = this.queue.then(show, show));
     if (outcome === "approved") return null;
-    const why = outcome === "timeout" ? "the confirmation dialog timed out" : outcome === "error" ? "the confirmation dialog could not be shown" : "the user cancelled in the confirmation dialog";
+    const why = outcome === "timeout" ? "the confirmation window timed out" : outcome === "error" ? "the confirmation window could not be shown" : "the user cancelled in the confirmation window";
     return refusal(
       `NOT EXECUTED \u2014 ${why}. Nothing was sent or changed. Do not retry unless the user asks.`
     );
@@ -111336,7 +111690,7 @@ function registerTool(name2, config2, cb) {
     };
     const run2 = cb;
     cb = (async (args, extra) => {
-      const refused = await confirmationGate.check(name2, args);
+      const refused = await confirmationGate.check(name2, args, messageLookup(extra));
       if (refused) return refused;
       return run2(stripToken(args), extra);
     });
@@ -111350,17 +111704,82 @@ function registerTool(name2, config2, cb) {
     },
     cb
   );
+  registeredTools.set(name2, tool);
   if (!isToolAllowed(name2, toolMode)) tool.disable();
   return tool;
 }
 var confirmationGate = new ConfirmationGate();
+void nativeDialogBinary();
+var registeredTools = /* @__PURE__ */ new Map();
+function messageLookup(extra) {
+  const call = async (tool, args) => {
+    const handler = registeredTools.get(tool)?.handler;
+    if (!handler) throw new Error(`${tool} is not available`);
+    let timer;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error("timed out")), 2e4);
+    });
+    try {
+      const result = await Promise.race([handler(args, extra), timeout]);
+      if (result.isError) {
+        const text = result.content?.find((c) => c.type === "text");
+        throw new Error(text && "text" in text ? text.text.slice(0, 120) : "read failed");
+      }
+      return result.structuredContent ?? {};
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+  const str2 = (v) => typeof v === "string" && v ? v : void 0;
+  return async (id, { account, mailbox, withBody, withImage }) => {
+    const info = {};
+    try {
+      const h = await call("get-message-headers", { id, account, mailbox });
+      Object.assign(info, {
+        subject: str2(h.subject),
+        from: str2(h.from),
+        to: str2(h.to),
+        cc: str2(h.cc),
+        date: str2(h.date)
+      });
+    } catch (error63) {
+      return { error: error63 instanceof Error ? error63.message : String(error63) };
+    }
+    if (withBody) {
+      try {
+        info.body = str2((await call("get-message", { id, account, mailbox })).body);
+      } catch {
+      }
+    }
+    if (withImage) {
+      try {
+        const listed = (await call("list-attachments", { id })).attachments;
+        const first = (Array.isArray(listed) ? listed : []).find((a) => {
+          const { name: name2, mimeType } = a;
+          return name2 && isImageName(name2) || mimeType?.startsWith("image/");
+        });
+        if (first?.name) {
+          const fetched = await call("fetch-attachment", { id, attachmentName: first.name });
+          if (typeof fetched.contentBase64 === "string") {
+            const ext = extname2(first.name) || ".img";
+            const path3 = joinPath(tmpdir4(), `amm-confirm-${randomUUID4()}${ext}`);
+            writeFileSync6(path3, Buffer.from(fetched.contentBase64, "base64"), { mode: 384 });
+            info.image = { name: first.name, path: path3 };
+          }
+        }
+      } catch {
+      }
+    }
+    return info;
+  };
+}
 var toolMode = (() => {
   const config2 = readConfigText();
   return resolveToolMode(process.env, config2.text, config2.unreadable);
 })();
 function readConfigText() {
   try {
-    return { text: readFileSync6(fileConfigPath(), "utf8") };
+    return { text: readFileSync7(fileConfigPath(), "utf8") };
   } catch (error63) {
     const code = error63.code;
     return code === "ENOENT" ? {} : { unreadable: code ?? String(error63) };
@@ -111828,7 +112247,7 @@ registerTool(
     } catch (error63) {
       return errorResponse(error63 instanceof Error ? error63.message : String(error63));
     }
-    writeFileSync5(target.savedPath, a.bytes, { flag: "wx", mode: 384 });
+    writeFileSync6(target.savedPath, a.bytes, { flag: "wx", mode: 384 });
     return successResponse(`${summary}. Written to ${target.savedPath}.`, {
       ...record2,
       savedPath: target.savedPath
@@ -111957,10 +112376,10 @@ ${formatMergedRows(orderedRows)}${coverage}`,
     if (ordered.length === 0) {
       return successResponse(`No messages found in thread "${base2}".${coverageBlock}`, structured);
     }
-    const list = formatMessageLines(ordered, { readState: true, mailbox, account });
+    const list2 = formatMessageLines(ordered, { readState: true, mailbox, account });
     return successResponse(
       `Thread "${base2}" \u2014 ${ordered.length} message(s), oldest first:
-${list}${coverageBlock}`,
+${list2}${coverageBlock}`,
       structured
     );
   }, "Error retrieving thread")
@@ -112840,7 +113259,7 @@ registerTool(
       if (!r.success || typeof r.base64 !== "string") {
         return errorResponse(r.error || `Failed to fetch attachment "${attachmentName}"`);
       }
-      writeFileSync5(target.savedPath, Buffer.from(r.base64, "base64"), { flag: "wx", mode: 384 });
+      writeFileSync6(target.savedPath, Buffer.from(r.base64, "base64"), { flag: "wx", mode: 384 });
       return successResponse(`Attachment "${attachmentName}" saved to ${savePath}`, {
         ok: true,
         attachmentName,
@@ -112946,9 +113365,9 @@ registerTool(
           count: boxes.length
         };
         if (boxes.length === 0) return successResponse("No mailboxes found", structured3);
-        const list2 = boxes.map((b) => `  - ${b.path} (${b.unseen} unread)`).join("\n");
+        const list3 = boxes.map((b) => `  - ${b.path} (${b.unseen} unread)`).join("\n");
         return successResponse(`Found ${boxes.length} mailbox(es):
-${list2}`, structured3);
+${list3}`, structured3);
       }
       const configs = resolveImapConfigs();
       const rows = [];
@@ -113001,9 +113420,9 @@ PARTIAL \u2014 could not read: ${failedAccounts.join(", ")}. This list is incomp
           `Could not list mailboxes from any source. Failed: ${failedAccounts.join(", ")}.`
         ) : successResponse("No mailboxes found", structured2);
       }
-      const list = rows.map((b) => `  - ${b.name} (${b.unreadCount} unread)`).join("\n");
+      const list2 = rows.map((b) => `  - ${b.name} (${b.unreadCount} unread)`).join("\n");
       return successResponse(`Found ${rows.length} mailbox(es):
-${list}${caveat}`, structured2);
+${list2}${caveat}`, structured2);
     }
     const { mailboxes, failed, error: error63 } = mailManager.listMailboxesChecked(account);
     if (failed) {
@@ -113201,15 +113620,15 @@ registerTool(
     }
   },
   withErrorHandling(() => {
-    const list = mailManager.listSmartMailboxes();
-    if (list.length === 0) {
+    const list2 = mailManager.listSmartMailboxes();
+    if (list2.length === 0) {
       return successResponse("No smart mailboxes found", { count: 0, smartMailboxes: [] });
     }
-    const lines = list.map((s) => `  - ${s.name}${s.criteriaSummary ? ` (${s.criteriaSummary})` : ""}`).join("\n");
-    return successResponse(`Found ${list.length} smart mailbox(es):
+    const lines = list2.map((s) => `  - ${s.name}${s.criteriaSummary ? ` (${s.criteriaSummary})` : ""}`).join("\n");
+    return successResponse(`Found ${list2.length} smart mailbox(es):
 ${lines}`, {
-      count: list.length,
-      smartMailboxes: list.map((s) => ({
+      count: list2.length,
+      smartMailboxes: list2.map((s) => ({
         name: s.name,
         id: s.id,
         criteriaSummary: s.criteriaSummary

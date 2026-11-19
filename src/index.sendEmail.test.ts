@@ -31,6 +31,10 @@ vi.mock("@/utils/confirmationGate.js", async (original) => ({
     }
   },
 }));
+vi.mock("@/utils/confirmDialog.js", () => ({
+  nativeDialogBinary: async () => undefined,
+  macDialogPrompt: async () => "cancelled",
+}));
 vi.mock("@/tools/resourcesAndPrompts.js", () => ({ registerResourcesAndPrompts: vi.fn() }));
 vi.mock("@/services/appleMailManager.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/services/appleMailManager.js")>()),

@@ -22,7 +22,7 @@ function textOf(result: { content: Array<{ type: string; text?: string }> } | nu
 
 function gate(prompt: HumanPrompt = async () => "approved", now = () => 0) {
   const spy = vi.fn(prompt);
-  return { gate: new ConfirmationGate(spy, now), prompt: spy };
+  return { gate: new ConfirmationGate(spy, undefined, now), prompt: spy };
 }
 
 describe("requiresConfirmation", () => {
