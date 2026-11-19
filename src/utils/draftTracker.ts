@@ -172,23 +172,27 @@ export async function sentSince(subject: string, since: Date): Promise<boolean> 
 }
 
 /**
- * Opens this exact draft (by id) in its own Mail window. Selecting it in the
- * main viewer is not used: Mail's viewer scripting fails on recent macOS, and it
- * would also change the mailbox the person is looking at.
+ * Opens this exact draft for editing, through its message:// URL (Message-ID).
+ * Mail's `open` command and viewer selection only show the Drafts list on
+ * recent macOS; the URL opens the draft itself.
  */
 export async function revealDraft(id: string): Promise<void> {
-  await runMail(
+  const messageId = await runMail(
     [
       "on run argv",
       'tell application "Mail"',
-      "  set m to first message of drafts mailbox whose id is ((item 1 of argv) as integer)",
-      "  open m",
-      "  activate",
+      "  return message id of (first message of drafts mailbox whose id is ((item 1 of argv) as integer))",
       "end tell",
       "end run",
     ],
     [id]
   );
+  const bare = messageId.trim().replace(/^<|>$/g, "");
+  if (!bare) throw new Error("the draft has no Message-ID");
+  await new Promise<void>((resolve, reject) => {
+    // Same form Mail itself uses for links: only the angle brackets are encoded.
+    execFile("open", [`message://%3C${bare}%3E`], (error) => (error ? reject(error) : resolve()));
+  });
 }
 
 /** Deletes the draft; resolves false when it could not. */

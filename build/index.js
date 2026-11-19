@@ -111726,18 +111726,21 @@ async function sentSince(subject, since) {
   return Number(out) > 0;
 }
 async function revealDraft(id) {
-  await runMail(
+  const messageId = await runMail(
     [
       "on run argv",
       'tell application "Mail"',
-      "  set m to first message of drafts mailbox whose id is ((item 1 of argv) as integer)",
-      "  open m",
-      "  activate",
+      "  return message id of (first message of drafts mailbox whose id is ((item 1 of argv) as integer))",
       "end tell",
       "end run"
     ],
     [id]
   );
+  const bare = messageId.trim().replace(/^<|>$/g, "");
+  if (!bare) throw new Error("the draft has no Message-ID");
+  await new Promise((resolve5, reject) => {
+    execFile2("open", [`message://%3C${bare}%3E`], (error63) => error63 ? reject(error63) : resolve5());
+  });
 }
 async function deleteDraft(id) {
   try {
