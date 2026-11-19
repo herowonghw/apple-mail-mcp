@@ -314,6 +314,65 @@ describe("ConfirmationGate with a Mail draft", () => {
   });
 });
 
+describe("ConfirmationGate with a skipped code", () => {
+  it("confirms in the chat client instead of the window", async () => {
+    const promptSpy = vi.fn<HumanPrompt>(async () => "approved");
+    const gate = new ConfirmationGate(promptSpy);
+    const clientConfirm = vi.fn(async () => "approved" as const);
+    const exec = vi.fn(async () => OK);
+    const first = await gate.run("send-email", SEND, exec, { clientConfirm });
+    const token = tokenFrom(textOf(first));
+    const result = await gate.run(
+      "send-email",
+      { ...SEND, confirmationToken: token, skipCode: true },
+      exec,
+      { clientConfirm }
+    );
+    expect(result).toBe(OK);
+    expect(clientConfirm).toHaveBeenCalledTimes(1);
+    expect(promptSpy).not.toHaveBeenCalled();
+    expect(exec).toHaveBeenCalledWith(SEND);
+  });
+
+  it("does not run when the user declines in the chat client", async () => {
+    const gate = new ConfirmationGate(async () => "approved");
+    const exec = vi.fn(async () => OK);
+    const clientConfirm = vi.fn(async () => "cancelled" as const);
+    const token = tokenFrom(textOf(await gate.run("send-email", SEND, exec, { clientConfirm })));
+    const result = await gate.run(
+      "send-email",
+      { ...SEND, confirmationToken: token, skipCode: true },
+      exec,
+      { clientConfirm }
+    );
+    expect(result.isError).toBe(true);
+    expect(exec).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the code window when the client cannot prompt", async () => {
+    const promptSpy = vi.fn<HumanPrompt>(async () => "approved");
+    const gate = new ConfirmationGate(promptSpy);
+    const exec = vi.fn(async () => OK);
+    const clientConfirm = vi.fn(async () => "unsupported" as const);
+    const token = tokenFrom(textOf(await gate.run("send-email", SEND, exec, { clientConfirm })));
+    await gate.run("send-email", { ...SEND, confirmationToken: token, skipCode: true }, exec, {
+      clientConfirm,
+    });
+    expect(promptSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the code window when the user did not skip", async () => {
+    const promptSpy = vi.fn<HumanPrompt>(async () => "approved");
+    const gate = new ConfirmationGate(promptSpy);
+    const exec = vi.fn(async () => OK);
+    const clientConfirm = vi.fn(async () => "approved" as const);
+    const token = tokenFrom(textOf(await gate.run("send-email", SEND, exec, { clientConfirm })));
+    await gate.run("send-email", { ...SEND, confirmationToken: token }, exec, { clientConfirm });
+    expect(clientConfirm).not.toHaveBeenCalled();
+    expect(promptSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("buildPreview", () => {
   it("replaces inline attachment content with its size and cuts long bodies", () => {
     const preview = buildPreview("send-email", {

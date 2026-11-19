@@ -172,7 +172,10 @@ import {
   CONFIRMED_TOOLS,
   ConfirmationGate,
   confirmationTokenSchema,
+  SKIP_CODE_PARAM,
+  skipCodeSchema,
   DraftEditedError,
+  type ClientConfirm,
   type DraftOps,
   type DraftRef,
 } from "@/utils/confirmationGate.js";
@@ -193,7 +196,12 @@ import {
 import { materializeAttachments } from "@/utils/attachmentMaterialize.js";
 import { resolveAttachmentReadPath } from "@/utils/attachmentReadPolicy.js";
 import type { AttachmentInput } from "@/types.js";
-import { isImageName, type MessageInfo, type MessageLookup } from "@/utils/operationDetails.js";
+import {
+  detailsText,
+  isImageName,
+  type MessageInfo,
+  type MessageLookup,
+} from "@/utils/operationDetails.js";
 import { nativeDialogBinary } from "@/utils/confirmDialog.js";
 import {
   writeDestructiveAudit,
@@ -610,6 +618,7 @@ function registerTool<
       inputSchema: {
         ...config.inputSchema,
         [CONFIRMATION_TOKEN_PARAM]: confirmationTokenSchema,
+        [SKIP_CODE_PARAM]: skipCodeSchema,
       } as unknown as InputArgs,
     };
     const run = cb as unknown as (
@@ -620,6 +629,7 @@ function registerTool<
       confirmationGate.run(name, args, async (approved) => run(approved, extra), {
         lookup: messageLookup(extra),
         drafts: mailDrafts(extra),
+        clientConfirm,
       })) as unknown as ToolCallback<InputArgs>;
   }
   const tool = registerToolWithContracts(
@@ -668,6 +678,42 @@ function callTool(extra: unknown) {
     }
   };
 }
+
+/**
+ * The confirm prompt for a skipped code: an MCP elicitation the chat client shows
+ * to the user (Claude Code, Codex, also remotely). The model cannot answer it.
+ */
+const clientConfirm: ClientConfirm = async (details) => {
+  if (!server.server.getClientCapabilities()?.elicitation) return "unsupported";
+  const confirm = details.confirmLabel ?? "确认执行";
+  try {
+    const answer = await server.server.elicitInput(
+      {
+        mode: "form",
+        message:
+          `${detailsText(details)}\n\n` +
+          `你已在对话中选择这次跳过验证码。请核对发件邮箱和收件人，选「${confirm}」才会执行。`,
+        requestedSchema: {
+          type: "object",
+          properties: {
+            decision: {
+              type: "string",
+              title: details.action,
+              enum: [confirm, "取消"],
+            },
+          },
+          required: ["decision"],
+        },
+      },
+      { timeout: 280_000 }
+    );
+    if (answer.action === "accept" && answer.content?.decision === confirm) return "approved";
+    return "cancelled";
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return /timed? ?out/i.test(message) ? "timeout" : "error";
+  }
+};
 
 /**
  * Saves a pending send as a Mail draft and checks it again before sending, so a
