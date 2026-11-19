@@ -63041,9 +63041,19 @@ function where(args, mailboxKey, accountKey) {
 }
 async function describeOperation(tool, args, lookup, options) {
   const fields = [];
+  const highlights = [];
+  const route = options.route;
+  const routeFrom = (fallbackFrom, to, cc, bcc) => {
+    push(highlights, "\u53D1\u4EF6\u90AE\u7BB1", route?.from ?? fallbackFrom);
+    push(highlights, "\u6536\u4EF6\u4EBA", route ? route.to : to);
+    push(highlights, "\u6284\u9001", route ? route.cc : cc);
+    push(highlights, "\u5BC6\u9001", route ? route.bcc : bcc);
+  };
   const tempFiles = [];
   const done = (d) => ({
     ...d,
+    ...highlights.length > 0 ? { highlights } : {},
+    ...route ? { draftAvailable: true } : {},
     fields,
     ...tempFiles.length > 0 ? { tempFiles } : {}
   });
@@ -63066,10 +63076,12 @@ async function describeOperation(tool, args, lookup, options) {
   const imageOf = (info) => info.image ? { imagePath: info.image.path, imageCaption: info.image.name } : {};
   switch (tool) {
     case "send-email": {
-      push(fields, "\u53D1\u4EF6\u8D26\u53F7", args.account ?? "\u9ED8\u8BA4\u8D26\u53F7");
-      push(fields, "\u6536\u4EF6\u4EBA", args.to);
-      push(fields, "\u6284\u9001", args.cc);
-      push(fields, "\u5BC6\u9001", args.bcc);
+      routeFrom(
+        args.account ? `${String(args.account)}\uFF08\u8D26\u53F7\uFF09` : "Mail \u7684\u9ED8\u8BA4\u53D1\u4EF6\u8D26\u53F7",
+        args.to,
+        args.cc,
+        args.bcc
+      );
       push(fields, "\u4E3B\u9898", args.subject);
       const image = withOutgoing(args.attachments);
       return done({
@@ -63083,8 +63095,12 @@ async function describeOperation(tool, args, lookup, options) {
     }
     case "send-serial-email": {
       const recipients = Array.isArray(args.recipients) ? args.recipients.map((r) => r.email ?? "") : [];
-      push(fields, "\u53D1\u4EF6\u8D26\u53F7", args.account ?? "\u9ED8\u8BA4\u8D26\u53F7");
-      fields.push({
+      push(
+        highlights,
+        "\u53D1\u4EF6\u90AE\u7BB1",
+        args.account ? `${String(args.account)}\uFF08\u8D26\u53F7\uFF09` : "Mail \u7684\u9ED8\u8BA4\u53D1\u4EF6\u8D26\u53F7"
+      );
+      highlights.push({
         label: "\u6536\u4EF6\u4EBA",
         value: `${recipients.length} \u4EBA\uFF0C\u6BCF\u4EBA\u5355\u72EC\u4E00\u5C01\uFF1A${recipients.slice(0, 8).join(", ")}${recipients.length > 8 ? " \u2026" : ""}`
       });
@@ -63100,11 +63116,13 @@ async function describeOperation(tool, args, lookup, options) {
     case "reply-to-message": {
       const all = args.replyAll === true;
       const info = await readOne(String(args.id), args.account, args.mailbox, false);
+      if (route) {
+        routeFrom("", []);
+      } else {
+        push(highlights, "\u53D1\u4EF6\u90AE\u7BB1", "\u539F\u90AE\u4EF6\u6240\u5728\u8D26\u53F7");
+        push(highlights, "\u56DE\u590D\u7ED9", all ? "\u539F\u53D1\u4EF6\u4EBA\u53CA\u6240\u6709\u6536\u4EF6\u4EBA\uFF08\u56DE\u590D\u5168\u90E8\uFF09" : "\u539F\u53D1\u4EF6\u4EBA");
+      }
       messageFields(fields, info, "\u539F\u90AE\u4EF6");
-      fields.push({
-        label: "\u56DE\u590D\u5BF9\u8C61",
-        value: all ? "\u539F\u53D1\u4EF6\u4EBA\u53CA\u6240\u6709\u6536\u4EF6\u4EBA\uFF08\u56DE\u590D\u5168\u90E8\uFF09" : "\u539F\u53D1\u4EF6\u4EBA"
-      });
       const image = withOutgoing(args.attachments);
       return done({
         action: all ? "\u5373\u5C06\u56DE\u590D\u5168\u90E8" : "\u5373\u5C06\u56DE\u590D\u90AE\u4EF6",
@@ -63116,7 +63134,11 @@ async function describeOperation(tool, args, lookup, options) {
       });
     }
     case "forward-message": {
-      push(fields, "\u8F6C\u53D1\u7ED9", args.to);
+      if (route) routeFrom("", []);
+      else {
+        push(highlights, "\u53D1\u4EF6\u90AE\u7BB1", "\u539F\u90AE\u4EF6\u6240\u5728\u8D26\u53F7");
+        push(highlights, "\u8F6C\u53D1\u7ED9", args.to);
+      }
       const info = await readOne(String(args.id), args.account, args.mailbox, !args.body);
       messageFields(fields, info, "\u539F\u90AE\u4EF6");
       const image = withOutgoing(args.attachments);
@@ -63245,6 +63267,8 @@ async function describeOperation(tool, args, lookup, options) {
 }
 function detailsText(details) {
   const lines = [`\u3010${details.action}\u3011`, details.question, ""];
+  for (const f of details.highlights ?? []) lines.push(`\u2605 ${f.label}\uFF1A${f.value}`);
+  if (details.highlights?.length) lines.push("");
   for (const f of details.fields) lines.push(`${f.label}\uFF1A${f.value}`);
   if (details.summary) lines.push("", `\u5185\u5BB9\u6458\u8981\uFF1A${details.summary}`);
   return lines.join("\n");
@@ -63300,18 +63324,28 @@ function nativeDialogBinary() {
   });
   return building;
 }
-function runNative(binary, title, details) {
+function runNative(binary, title, details, actions) {
   return new Promise((resolve4) => {
     const env = { ...process.env };
     delete env.CONFIRM_DIALOG_SNAPSHOT;
     const child = spawn2(binary, [], { env, stdio: ["pipe", "pipe", "ignore"] });
     let out = "";
+    let word = "";
     const timer = setTimeout(() => child.kill(), (TIMEOUT_SECONDS + 20) * 1e3);
-    child.stdout.on("data", (chunk) => out += String(chunk));
+    child.stdout.on("data", (chunk) => {
+      out += String(chunk);
+      let newline;
+      while ((newline = out.indexOf("\n")) >= 0) {
+        const line = out.slice(0, newline).trim();
+        out = out.slice(newline + 1);
+        if (line === "OPEN_DRAFT") actions.openDraft?.();
+        else if (line) word = line;
+      }
+    });
     child.on("error", () => resolve4("error"));
     child.on("close", () => {
       clearTimeout(timer);
-      const word = out.trim();
+      if (out.trim()) word = out.trim();
       resolve4(
         word === "APPROVED" ? "approved" : word === "CANCELLED" ? "cancelled" : word === "TIMEOUT" ? "timeout" : "error"
       );
@@ -63349,7 +63383,8 @@ function runFallback(title, text) {
   });
 }
 async function fallbackPrompt(title, details) {
-  let body = `${detailsText(details)}
+  const draft = details.draftAvailable ? "\n\n\u8349\u7A3F\u5DF2\u5B58\u5728 Mail \u8349\u7A3F\u7BB1\uFF0C\u53EF\u4EE5\u5148\u53BB Mail \u91CC\u67E5\u770B\uFF1B\u5728 Mail \u91CC\u81EA\u5DF1\u53D1\u9001\u7684\u8BDD\uFF0C\u8FD9\u91CC\u4E0D\u4F1A\u91CD\u590D\u53D1\u9001\u3002" : "";
+  let body = `${detailsText(details)}${draft}
 
 \u8BF7\u8F93\u5165\u4EFB\u610F 6 \u4F4D\u5B57\u6BCD\u6216\u6570\u5B57\u540E\u70B9\u201C\u786E\u5B9A\u201D\uFF1B\u70B9\u201C\u53D6\u6D88\u201D\u5219\u4E0D\u6267\u884C\u3002`;
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -63361,10 +63396,10 @@ ${body}`;
   }
   return "cancelled";
 }
-var macDialogPrompt = async (title, details) => {
+var macDialogPrompt = async (title, details, actions = {}) => {
   const binary = await nativeDialogBinary();
   if (binary) {
-    const outcome = await runNative(binary, title, details);
+    const outcome = await runNative(binary, title, details, actions);
     if (outcome !== "error") return outcome;
   }
   return fallbackPrompt(title, details);

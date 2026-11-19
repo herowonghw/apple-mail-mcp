@@ -28,7 +28,9 @@ import {
   detailsText,
   noLookup,
   type MessageLookup,
+  type Route,
 } from "@/utils/operationDetails.js";
+import type { DraftCheck, DraftSnapshot } from "@/utils/draftTracker.js";
 
 export type { HumanPrompt, PromptOutcome } from "@/utils/confirmDialog.js";
 
@@ -73,9 +75,35 @@ export const CONFIRMATION_NOTE =
   "confirmationToken; ask the user to approve that preview, then repeat the call with the same " +
   "arguments and the token. The user must also enter a 6-character code in a macOS window.";
 
+/** The Mail draft saved for a pending send. */
+export interface DraftRef {
+  snapshot: DraftSnapshot;
+  createdAt: Date;
+  route: Route;
+}
+
+/** Draft handling for sends; injected so the gate can be tested without Mail. */
+export interface DraftOps {
+  /** Saves the call as a Mail draft. Undefined when the tool has none or saving failed. */
+  prepare(tool: string, args: Record<string, unknown>): Promise<DraftRef | undefined>;
+  check(draft: DraftRef): Promise<DraftCheck>;
+  reveal(draft: DraftRef): Promise<void>;
+  remove(draft: DraftRef): Promise<boolean>;
+}
+
+export const noDrafts: DraftOps = {
+  prepare: async () => undefined,
+  check: async () => ({ state: "missing", foundInSent: false }),
+  reveal: async () => {},
+  remove: async () => true,
+};
+
+export type ToolRunner = (args: Record<string, unknown>) => Promise<CallToolResult>;
+
 interface Pending {
   tool: string;
   fingerprint: string;
+  draft?: DraftRef;
   expiresAt: number;
 }
 
@@ -128,6 +156,10 @@ export function buildPreview(tool: string, args: Record<string, unknown>): strin
   return text.length > MAX_PREVIEW_CHARS ? `${text.slice(0, MAX_PREVIEW_CHARS)}\n…` : text;
 }
 
+function appendText(result: CallToolResult, text: string): CallToolResult {
+  return { ...result, content: [...(result.content ?? []), { type: "text", text }] };
+}
+
 function refusal(text: string): CallToolResult {
   return { content: [{ type: "text", text }], isError: true };
 }
@@ -143,33 +175,50 @@ export class ConfirmationGate {
   ) {}
 
   /**
-   * Returns null when the call may proceed, or the result to send back instead.
-   * `args` still carries the token; the caller strips it before running the tool.
+   * Runs `exec` only after both confirmations. Ungated calls run straight away.
+   * `args` may carry the token; `exec` never sees it.
    */
-  async check(
+  async run(
     tool: string,
     args: Record<string, unknown>,
-    lookup: MessageLookup = this.lookup
-  ): Promise<CallToolResult | null> {
-    if (!requiresConfirmation(tool, args)) return null;
-    this.expire();
+    exec: ToolRunner,
+    deps: { lookup?: MessageLookup; drafts?: DraftOps } = {}
+  ): Promise<CallToolResult> {
     const rest = stripToken(args);
+    if (!requiresConfirmation(tool, args)) return exec(rest);
+    const lookup = deps.lookup ?? this.lookup;
+    const drafts = deps.drafts ?? noDrafts;
+    this.expire();
     const print = fingerprint(tool, rest);
     const token = args[CONFIRMATION_TOKEN_PARAM];
 
     if (typeof token !== "string" || token === "") {
       const issued = randomBytes(9).toString("base64url");
-      const details = await describeOperation(tool, rest, lookup, { withImage: false });
+      const draft = await drafts.prepare(tool, rest).catch(() => undefined);
+      const details = await describeOperation(tool, rest, lookup, {
+        withImage: false,
+        route: draft?.route,
+      });
       cleanupDetails(details);
-      this.pending.set(issued, { tool, fingerprint: print, expiresAt: this.now() + TOKEN_TTL_MS });
+      this.pending.set(issued, {
+        tool,
+        fingerprint: print,
+        draft,
+        expiresAt: this.now() + TOKEN_TTL_MS,
+      });
+      const draftNote = draft
+        ? `A draft of exactly this message was saved in Mail's Drafts (nothing was sent). The ` +
+          `user can open it from the confirmation window. If the user sends or deletes that ` +
+          `draft in Mail, the confirmed call will not send again.\n\n`
+        : "";
       return refusal(
-        `NOT EXECUTED — confirmation required.\n\n${detailsText(details)}\n\n` +
+        `NOT EXECUTED — confirmation required.\n\n${detailsText(details)}\n\n${draftNote}` +
           `Arguments:\n${buildPreview(tool, rest)}\n\n` +
-          `Show this to the user and ask whether to proceed. Only if the user explicitly ` +
-          `approves, call ${tool} again with exactly the same arguments plus ` +
-          `${CONFIRMATION_TOKEN_PARAM}: "${issued}" (valid 10 minutes, single use). The user will ` +
-          `then have to type a 6-character code into a macOS window. If the user declines, do ` +
-          `not call again.`
+          `Show this to the user — make the sender address and the recipients prominent — and ` +
+          `ask whether to proceed. Only if the user explicitly approves, call ${tool} again with ` +
+          `exactly the same arguments plus ${CONFIRMATION_TOKEN_PARAM}: "${issued}" (valid 10 ` +
+          `minutes, single use). The user will then have to type a 6-character code into a macOS ` +
+          `window. If the user declines, do not call again.`
       );
     }
 
@@ -183,26 +232,77 @@ export class ConfirmationGate {
           `new preview, and get the user's approval again.`
       );
     }
+    const draft = entry.draft;
 
     // One dialog at a time, so a person never answers a prompt meant for another call.
     const show = async () => {
-      const details = await describeOperation(tool, rest, lookup, { withImage: true });
+      const details = await describeOperation(tool, rest, lookup, {
+        withImage: true,
+        route: draft?.route,
+      });
       try {
-        return await this.prompt(`Apple Mail MCP 操作确认：${tool}`, details);
+        return await this.prompt(`Apple Mail MCP 操作确认：${tool}`, details, {
+          openDraft: draft ? () => void drafts.reveal(draft).catch(() => {}) : undefined,
+        });
       } finally {
         cleanupDetails(details);
       }
     };
     const outcome = await (this.queue = this.queue.then(show, show));
-    if (outcome === "approved") return null;
-    const why =
-      outcome === "timeout"
-        ? "the confirmation window timed out"
-        : outcome === "error"
-          ? "the confirmation window could not be shown"
-          : "the user cancelled in the confirmation window";
-    return refusal(
-      `NOT EXECUTED — ${why}. Nothing was sent or changed. Do not retry unless the user asks.`
+    if (outcome !== "approved") {
+      const why =
+        outcome === "timeout"
+          ? "the confirmation window timed out"
+          : outcome === "error"
+            ? "the confirmation window could not be shown"
+            : "the user cancelled in the confirmation window";
+      const kept = draft ? " The draft stays in Mail's Drafts." : "";
+      return refusal(
+        `NOT EXECUTED — ${why}. Nothing was sent or changed.${kept} Do not retry unless the ` +
+          `user asks.`
+      );
+    }
+    if (!draft) return exec(rest);
+
+    // The person may have sent, deleted or edited the draft in Mail meanwhile.
+    const state = await drafts
+      .check(draft)
+      .catch((error: unknown): DraftCheck | { state: "error"; error: string } => ({
+        state: "error",
+        error: error instanceof Error ? error.message : String(error),
+      }));
+    if (state.state === "missing") {
+      return refusal(
+        `NOT SENT AGAIN — the draft is no longer in Mail's Drafts` +
+          (state.foundInSent
+            ? `, and a message with this subject is in Sent: the user already sent it from Mail.`
+            : `: the user sent or deleted it in Mail.`) +
+          ` To avoid a duplicate, nothing was sent. Do not retry.`
+      );
+    }
+    if (state.state === "changed") {
+      return refusal(
+        `NOT SENT — the user edited the draft in Mail after approving it, so the approved ` +
+          `content no longer matches. Nothing was sent; the edited draft is in Drafts. Tell the ` +
+          `user to send it from Mail, or start over without a token.`
+      );
+    }
+    if (state.state === "error") {
+      return refusal(
+        `NOT SENT — the draft could not be checked (${state.error}), so whether it was already ` +
+          `sent from Mail is unknown. Nothing was sent. Do not retry; ask the user to check Mail.`
+      );
+    }
+    const result = await exec(rest);
+    if (result.isError) {
+      return appendText(result, "The draft stays in Mail's Drafts.");
+    }
+    const removed = await drafts.remove({ ...draft, snapshot: state.snapshot }).catch(() => false);
+    return appendText(
+      result,
+      removed
+        ? "The matching draft was removed from Drafts."
+        : "Sent, but the matching draft could not be removed from Drafts; delete it in Mail."
     );
   }
 

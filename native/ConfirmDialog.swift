@@ -18,7 +18,9 @@ struct Payload: Decodable {
     let question: String
     let kind: String?
     let confirmLabel: String?
+    let highlights: [Field]?
     let fields: [Field]
+    let draftAvailable: Bool?
     let summary: String?
     let imagePath: String?
     let imageCaption: String?
@@ -292,6 +294,12 @@ final class Controller: NSObject, NSTextFieldDelegate {
         finish("APPROVED", 0)
     }
 
+    /** Asks the server to show the draft in Mail; the window stays open. */
+    @objc func openDraft() {
+        print("OPEN_DRAFT")
+        fflush(stdout)
+    }
+
     @objc func cancel() {
         finish("CANCELLED", 1)
     }
@@ -339,6 +347,57 @@ header.addArrangedSubview(vstack([
 ], spacing: 4))
 
 var sections: [NSView] = [header]
+
+// Sender and recipients: tinted, bold, before everything else.
+if let highlights = payload.highlights, !highlights.isEmpty {
+    var rows: [NSView] = []
+    for field in highlights {
+        let row = NSStackView()
+        row.orientation = .horizontal
+        row.alignment = .firstBaseline
+        row.spacing = 10
+        let isFrom = field.label == "发件邮箱"
+        row.addArrangedSubview(text(field.label, size: 12, weight: .semibold,
+                                    color: accent, width: labelColumn))
+        let value = text(field.value, size: isFrom ? 15 : 14, weight: isFrom ? .bold : .semibold,
+                         width: contentWidth - cardPadding * 2 - labelColumn - 10)
+        value.isSelectable = true
+        row.addArrangedSubview(value)
+        rows.append(row)
+    }
+    let routeCard = CardView()
+    routeCard.fill = accent.withAlphaComponent(0.08)
+    routeCard.stroke = accent.withAlphaComponent(0.45)
+    let content = vstack(rows, spacing: 9)
+    routeCard.translatesAutoresizingMaskIntoConstraints = false
+    content.translatesAutoresizingMaskIntoConstraints = false
+    routeCard.addSubview(content)
+    NSLayoutConstraint.activate([
+        routeCard.widthAnchor.constraint(equalToConstant: contentWidth),
+        content.topAnchor.constraint(equalTo: routeCard.topAnchor, constant: cardPadding),
+        content.bottomAnchor.constraint(equalTo: routeCard.bottomAnchor, constant: -cardPadding),
+        content.leadingAnchor.constraint(equalTo: routeCard.leadingAnchor, constant: cardPadding),
+        content.trailingAnchor.constraint(equalTo: routeCard.trailingAnchor, constant: -cardPadding),
+    ])
+    var block: [NSView] = [sectionTitle("从哪个邮箱发 · 发给谁"), routeCard]
+    if payload.draftAvailable == true {
+        let button = NSButton(title: " 在 Mail 中查看草稿", target: controller,
+                              action: #selector(Controller.openDraft))
+        button.image = NSImage(systemSymbolName: "doc.text.magnifyingglass",
+                               accessibilityDescription: nil)
+        button.imagePosition = .imageLeading
+        button.bezelStyle = .rounded
+        let note = text("草稿已存在 Mail 草稿箱。你也可以在 Mail 里自己发送，这里不会再重复发送。",
+                        size: 11, color: .tertiaryLabelColor,
+                        width: contentWidth - 170)
+        let row = NSStackView(views: [button, note])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 10
+        block.append(row)
+    }
+    sections.append(vstack(block, spacing: 6))
+}
 
 // Message details.
 if !payload.fields.isEmpty {

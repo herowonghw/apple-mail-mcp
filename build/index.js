@@ -3886,7 +3886,7 @@ var require_fast_uri = __commonJS({
         normalizeString(uri, options);
       } else if (typeof uri === "object") {
         uri = /** @type {T} */
-        parse5(serialize(uri, options), options);
+        parse6(serialize(uri, options), options);
       }
       return uri;
     }
@@ -3929,8 +3929,8 @@ var require_fast_uri = __commonJS({
     function resolveComponent(base2, relative, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
-        base2 = parse5(serialize(base2, options), options);
-        relative = parse5(serialize(relative, options), options);
+        base2 = parse6(serialize(base2, options), options);
+        relative = parse6(serialize(relative, options), options);
       }
       options = options || {};
       if (!options.tolerant && relative.scheme) {
@@ -4248,7 +4248,7 @@ var require_fast_uri = __commonJS({
       }
       return { parsed, malformedAuthorityOrPort, malformedPercentEncoding, malformedSchemeSpecific, malformedHost, malformedScheme };
     }
-    function parse5(uri, opts) {
+    function parse6(uri, opts) {
       return parseWithStatus(uri, opts).parsed;
     }
     function normalizeString(uri, opts) {
@@ -4285,7 +4285,7 @@ var require_fast_uri = __commonJS({
       resolveComponent,
       equal,
       serialize,
-      parse: parse5
+      parse: parse6
     };
     module.exports = fastUri;
     module.exports.default = fastUri;
@@ -44295,7 +44295,7 @@ var require_tools2 = __commonJS({
     var libmime = require_libmime();
     var { resolveCharset } = require_charsets2();
     var { compiler } = require_imap_handler();
-    var { createHash: createHash4 } = __require("crypto");
+    var { createHash: createHash5 } = __require("crypto");
     var { JPDecoder } = require_jp_decoder();
     var iconv = require_lib();
     var FLAG_COLORS = ["red", "orange", "yellow", "green", "blue", "purple", "grey"];
@@ -44925,7 +44925,7 @@ var require_tools2 = __commonJS({
             } catch {
             }
           }
-          map3.id = map3.emailId || createHash4("md5").update([path3, mailbox.uidValidity?.toString() || "", map3.uid.toString()].join(":")).digest("hex");
+          map3.id = map3.emailId || createHash5("md5").update([path3, mailbox.uidValidity?.toString() || "", map3.uid.toString()].join(":")).digest("hex");
         }
         if (map3.flags) {
           let flagColor = tools.getFlagColor(map3.flags);
@@ -75864,18 +75864,18 @@ var validateAsync = async (schema, value, _ctx) => {
   return result.issues.length === 0;
 };
 var _encode = (_Err) => {
-  const parse5 = _parse(_Err);
+  const parse6 = _parse(_Err);
   const fn = (schema, value, _ctx, _params) => {
     const ctx = _ctx ? { ..._ctx, direction: "backward" } : { direction: "backward" };
-    return parse5(schema, value, ctx, finalizeParams(fn, _params));
+    return parse6(schema, value, ctx, finalizeParams(fn, _params));
   };
   return fn;
 };
 var encode = /* @__PURE__ */ _encode($ZodRealError);
 var _decode = (_Err) => {
-  const parse5 = _parse(_Err);
+  const parse6 = _parse(_Err);
   const fn = (schema, value, _ctx, _params) => {
-    return parse5(schema, value, _ctx, finalizeParams(fn, _params));
+    return parse6(schema, value, _ctx, finalizeParams(fn, _params));
   };
   return fn;
 };
@@ -77370,7 +77370,7 @@ function capSize(inst, size) {
   if (!caps.length)
     return;
   const cap = Math.min(...caps.map((c) => c[0]));
-  const parse5 = inst._zod.parse;
+  const parse6 = inst._zod.parse;
   inst._zod.parse = (payload, ctx) => {
     const n = size(payload.value);
     if (n > cap && !ctx?.skipChecks && ctx?.direction !== "backward") {
@@ -77384,7 +77384,7 @@ function capSize(inst, size) {
         }
       }
     }
-    return parse5(payload, ctx);
+    return parse6(payload, ctx);
   };
 }
 var arraySize = (input2) => Array.isArray(input2) ? input2.length : -1;
@@ -103818,12 +103818,12 @@ var AS_MESSAGE_DATES_FRAGMENT = `set msgDateSent to ""
                 set msgDates to msgDateSent & "|" & msgDateRecv`;
 function parseMessageDates(pair) {
   const [sent = "", received = ""] = pair.split("|");
-  const parse5 = (v) => {
+  const parse6 = (v) => {
     if (!v.trim()) return void 0;
     const d = parseAppleScriptDate(v.trim());
     return Number.isNaN(d.getTime()) ? void 0 : d;
   };
-  return { dateSent: parse5(sent), dateReceived: parse5(received) };
+  return { dateSent: parse6(sent), dateReceived: parse6(received) };
 }
 function buildMessageRowLoop(opts) {
   const { collection, limit, dedup, dateFilter, trailing = "", offset, withAttachments } = opts;
@@ -111043,9 +111043,19 @@ function where(args, mailboxKey, accountKey) {
 }
 async function describeOperation(tool, args, lookup, options) {
   const fields = [];
+  const highlights = [];
+  const route = options.route;
+  const routeFrom = (fallbackFrom, to, cc, bcc) => {
+    push(highlights, "\u53D1\u4EF6\u90AE\u7BB1", route?.from ?? fallbackFrom);
+    push(highlights, "\u6536\u4EF6\u4EBA", route ? route.to : to);
+    push(highlights, "\u6284\u9001", route ? route.cc : cc);
+    push(highlights, "\u5BC6\u9001", route ? route.bcc : bcc);
+  };
   const tempFiles = [];
   const done = (d) => ({
     ...d,
+    ...highlights.length > 0 ? { highlights } : {},
+    ...route ? { draftAvailable: true } : {},
     fields,
     ...tempFiles.length > 0 ? { tempFiles } : {}
   });
@@ -111068,10 +111078,12 @@ async function describeOperation(tool, args, lookup, options) {
   const imageOf = (info) => info.image ? { imagePath: info.image.path, imageCaption: info.image.name } : {};
   switch (tool) {
     case "send-email": {
-      push(fields, "\u53D1\u4EF6\u8D26\u53F7", args.account ?? "\u9ED8\u8BA4\u8D26\u53F7");
-      push(fields, "\u6536\u4EF6\u4EBA", args.to);
-      push(fields, "\u6284\u9001", args.cc);
-      push(fields, "\u5BC6\u9001", args.bcc);
+      routeFrom(
+        args.account ? `${String(args.account)}\uFF08\u8D26\u53F7\uFF09` : "Mail \u7684\u9ED8\u8BA4\u53D1\u4EF6\u8D26\u53F7",
+        args.to,
+        args.cc,
+        args.bcc
+      );
       push(fields, "\u4E3B\u9898", args.subject);
       const image = withOutgoing(args.attachments);
       return done({
@@ -111085,8 +111097,12 @@ async function describeOperation(tool, args, lookup, options) {
     }
     case "send-serial-email": {
       const recipients2 = Array.isArray(args.recipients) ? args.recipients.map((r) => r.email ?? "") : [];
-      push(fields, "\u53D1\u4EF6\u8D26\u53F7", args.account ?? "\u9ED8\u8BA4\u8D26\u53F7");
-      fields.push({
+      push(
+        highlights,
+        "\u53D1\u4EF6\u90AE\u7BB1",
+        args.account ? `${String(args.account)}\uFF08\u8D26\u53F7\uFF09` : "Mail \u7684\u9ED8\u8BA4\u53D1\u4EF6\u8D26\u53F7"
+      );
+      highlights.push({
         label: "\u6536\u4EF6\u4EBA",
         value: `${recipients2.length} \u4EBA\uFF0C\u6BCF\u4EBA\u5355\u72EC\u4E00\u5C01\uFF1A${recipients2.slice(0, 8).join(", ")}${recipients2.length > 8 ? " \u2026" : ""}`
       });
@@ -111102,11 +111118,13 @@ async function describeOperation(tool, args, lookup, options) {
     case "reply-to-message": {
       const all = args.replyAll === true;
       const info = await readOne(String(args.id), args.account, args.mailbox, false);
+      if (route) {
+        routeFrom("", []);
+      } else {
+        push(highlights, "\u53D1\u4EF6\u90AE\u7BB1", "\u539F\u90AE\u4EF6\u6240\u5728\u8D26\u53F7");
+        push(highlights, "\u56DE\u590D\u7ED9", all ? "\u539F\u53D1\u4EF6\u4EBA\u53CA\u6240\u6709\u6536\u4EF6\u4EBA\uFF08\u56DE\u590D\u5168\u90E8\uFF09" : "\u539F\u53D1\u4EF6\u4EBA");
+      }
       messageFields(fields, info, "\u539F\u90AE\u4EF6");
-      fields.push({
-        label: "\u56DE\u590D\u5BF9\u8C61",
-        value: all ? "\u539F\u53D1\u4EF6\u4EBA\u53CA\u6240\u6709\u6536\u4EF6\u4EBA\uFF08\u56DE\u590D\u5168\u90E8\uFF09" : "\u539F\u53D1\u4EF6\u4EBA"
-      });
       const image = withOutgoing(args.attachments);
       return done({
         action: all ? "\u5373\u5C06\u56DE\u590D\u5168\u90E8" : "\u5373\u5C06\u56DE\u590D\u90AE\u4EF6",
@@ -111118,7 +111136,11 @@ async function describeOperation(tool, args, lookup, options) {
       });
     }
     case "forward-message": {
-      push(fields, "\u8F6C\u53D1\u7ED9", args.to);
+      if (route) routeFrom("", []);
+      else {
+        push(highlights, "\u53D1\u4EF6\u90AE\u7BB1", "\u539F\u90AE\u4EF6\u6240\u5728\u8D26\u53F7");
+        push(highlights, "\u8F6C\u53D1\u7ED9", args.to);
+      }
       const info = await readOne(String(args.id), args.account, args.mailbox, !args.body);
       messageFields(fields, info, "\u539F\u90AE\u4EF6");
       const image = withOutgoing(args.attachments);
@@ -111247,6 +111269,8 @@ async function describeOperation(tool, args, lookup, options) {
 }
 function detailsText(details) {
   const lines = [`\u3010${details.action}\u3011`, details.question, ""];
+  for (const f of details.highlights ?? []) lines.push(`\u2605 ${f.label}\uFF1A${f.value}`);
+  if (details.highlights?.length) lines.push("");
   for (const f of details.fields) lines.push(`${f.label}\uFF1A${f.value}`);
   if (details.summary) lines.push("", `\u5185\u5BB9\u6458\u8981\uFF1A${details.summary}`);
   return lines.join("\n");
@@ -111302,18 +111326,28 @@ function nativeDialogBinary() {
   });
   return building;
 }
-function runNative(binary, title, details) {
+function runNative(binary, title, details, actions) {
   return new Promise((resolve5) => {
     const env = { ...process.env };
     delete env.CONFIRM_DIALOG_SNAPSHOT;
     const child = spawn2(binary, [], { env, stdio: ["pipe", "pipe", "ignore"] });
     let out = "";
+    let word = "";
     const timer = setTimeout(() => child.kill(), (TIMEOUT_SECONDS + 20) * 1e3);
-    child.stdout.on("data", (chunk) => out += String(chunk));
+    child.stdout.on("data", (chunk) => {
+      out += String(chunk);
+      let newline;
+      while ((newline = out.indexOf("\n")) >= 0) {
+        const line = out.slice(0, newline).trim();
+        out = out.slice(newline + 1);
+        if (line === "OPEN_DRAFT") actions.openDraft?.();
+        else if (line) word = line;
+      }
+    });
     child.on("error", () => resolve5("error"));
     child.on("close", () => {
       clearTimeout(timer);
-      const word = out.trim();
+      if (out.trim()) word = out.trim();
       resolve5(
         word === "APPROVED" ? "approved" : word === "CANCELLED" ? "cancelled" : word === "TIMEOUT" ? "timeout" : "error"
       );
@@ -111351,7 +111385,8 @@ function runFallback(title, text) {
   });
 }
 async function fallbackPrompt(title, details) {
-  let body = `${detailsText(details)}
+  const draft = details.draftAvailable ? "\n\n\u8349\u7A3F\u5DF2\u5B58\u5728 Mail \u8349\u7A3F\u7BB1\uFF0C\u53EF\u4EE5\u5148\u53BB Mail \u91CC\u67E5\u770B\uFF1B\u5728 Mail \u91CC\u81EA\u5DF1\u53D1\u9001\u7684\u8BDD\uFF0C\u8FD9\u91CC\u4E0D\u4F1A\u91CD\u590D\u53D1\u9001\u3002" : "";
+  let body = `${detailsText(details)}${draft}
 
 \u8BF7\u8F93\u5165\u4EFB\u610F 6 \u4F4D\u5B57\u6BCD\u6216\u6570\u5B57\u540E\u70B9\u201C\u786E\u5B9A\u201D\uFF1B\u70B9\u201C\u53D6\u6D88\u201D\u5219\u4E0D\u6267\u884C\u3002`;
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -111363,10 +111398,10 @@ ${body}`;
   }
   return "cancelled";
 }
-var macDialogPrompt = async (title, details) => {
+var macDialogPrompt = async (title, details, actions = {}) => {
   const binary = await nativeDialogBinary();
   if (binary) {
-    const outcome = await runNative(binary, title, details);
+    const outcome = await runNative(binary, title, details, actions);
     if (outcome !== "error") return outcome;
   }
   return fallbackPrompt(title, details);
@@ -111398,6 +111433,13 @@ var confirmationTokenSchema = external_exports.string().optional().describe(
   "Leave empty on the first call. The server then returns a preview and a token instead of acting. Show the preview to the user; only after the user explicitly approves, call again with identical arguments plus this token. The user must then also type a 6-character code into a macOS window before anything happens."
 );
 var CONFIRMATION_NOTE = "\nConfirmation: this tool never acts on the first call. It returns a preview and a confirmationToken; ask the user to approve that preview, then repeat the call with the same arguments and the token. The user must also enter a 6-character code in a macOS window.";
+var noDrafts = {
+  prepare: async () => void 0,
+  check: async () => ({ state: "missing", foundInSent: false }),
+  reveal: async () => {
+  },
+  remove: async () => true
+};
 var TOKEN_TTL_MS = 10 * 60 * 1e3;
 var MAX_PREVIEW_CHARS = 1500;
 function canonical(value) {
@@ -111439,6 +111481,9 @@ ${shown}`;
   return text.length > MAX_PREVIEW_CHARS ? `${text.slice(0, MAX_PREVIEW_CHARS)}
 \u2026` : text;
 }
+function appendText(result, text) {
+  return { ...result, content: [...result.content ?? [], { type: "text", text }] };
+}
 function refusal(text) {
   return { content: [{ type: "text", text }], isError: true };
 }
@@ -111454,29 +111499,43 @@ var ConfirmationGate = class {
   pending = /* @__PURE__ */ new Map();
   queue = Promise.resolve();
   /**
-   * Returns null when the call may proceed, or the result to send back instead.
-   * `args` still carries the token; the caller strips it before running the tool.
+   * Runs `exec` only after both confirmations. Ungated calls run straight away.
+   * `args` may carry the token; `exec` never sees it.
    */
-  async check(tool, args, lookup = this.lookup) {
-    if (!requiresConfirmation(tool, args)) return null;
-    this.expire();
+  async run(tool, args, exec, deps = {}) {
     const rest = stripToken(args);
+    if (!requiresConfirmation(tool, args)) return exec(rest);
+    const lookup = deps.lookup ?? this.lookup;
+    const drafts = deps.drafts ?? noDrafts;
+    this.expire();
     const print = fingerprint(tool, rest);
     const token = args[CONFIRMATION_TOKEN_PARAM];
     if (typeof token !== "string" || token === "") {
       const issued = randomBytes(9).toString("base64url");
-      const details = await describeOperation(tool, rest, lookup, { withImage: false });
+      const draft2 = await drafts.prepare(tool, rest).catch(() => void 0);
+      const details = await describeOperation(tool, rest, lookup, {
+        withImage: false,
+        route: draft2?.route
+      });
       cleanupDetails(details);
-      this.pending.set(issued, { tool, fingerprint: print, expiresAt: this.now() + TOKEN_TTL_MS });
+      this.pending.set(issued, {
+        tool,
+        fingerprint: print,
+        draft: draft2,
+        expiresAt: this.now() + TOKEN_TTL_MS
+      });
+      const draftNote = draft2 ? `A draft of exactly this message was saved in Mail's Drafts (nothing was sent). The user can open it from the confirmation window. If the user sends or deletes that draft in Mail, the confirmed call will not send again.
+
+` : "";
       return refusal(
         `NOT EXECUTED \u2014 confirmation required.
 
 ${detailsText(details)}
 
-Arguments:
+${draftNote}Arguments:
 ${buildPreview(tool, rest)}
 
-Show this to the user and ask whether to proceed. Only if the user explicitly approves, call ${tool} again with exactly the same arguments plus ${CONFIRMATION_TOKEN_PARAM}: "${issued}" (valid 10 minutes, single use). The user will then have to type a 6-character code into a macOS window. If the user declines, do not call again.`
+Show this to the user \u2014 make the sender address and the recipients prominent \u2014 and ask whether to proceed. Only if the user explicitly approves, call ${tool} again with exactly the same arguments plus ${CONFIRMATION_TOKEN_PARAM}: "${issued}" (valid 10 minutes, single use). The user will then have to type a 6-character code into a macOS window. If the user declines, do not call again.`
       );
     }
     const entry = this.pending.get(token);
@@ -111486,19 +111545,57 @@ Show this to the user and ask whether to proceed. Only if the user explicitly ap
         `NOT EXECUTED \u2014 ${CONFIRMATION_TOKEN_PARAM} is unknown, expired, already used, or the arguments changed since it was issued. Call ${tool} again without a token to get a new preview, and get the user's approval again.`
       );
     }
+    const draft = entry.draft;
     const show = async () => {
-      const details = await describeOperation(tool, rest, lookup, { withImage: true });
+      const details = await describeOperation(tool, rest, lookup, {
+        withImage: true,
+        route: draft?.route
+      });
       try {
-        return await this.prompt(`Apple Mail MCP \u64CD\u4F5C\u786E\u8BA4\uFF1A${tool}`, details);
+        return await this.prompt(`Apple Mail MCP \u64CD\u4F5C\u786E\u8BA4\uFF1A${tool}`, details, {
+          openDraft: draft ? () => void drafts.reveal(draft).catch(() => {
+          }) : void 0
+        });
       } finally {
         cleanupDetails(details);
       }
     };
     const outcome = await (this.queue = this.queue.then(show, show));
-    if (outcome === "approved") return null;
-    const why = outcome === "timeout" ? "the confirmation window timed out" : outcome === "error" ? "the confirmation window could not be shown" : "the user cancelled in the confirmation window";
-    return refusal(
-      `NOT EXECUTED \u2014 ${why}. Nothing was sent or changed. Do not retry unless the user asks.`
+    if (outcome !== "approved") {
+      const why = outcome === "timeout" ? "the confirmation window timed out" : outcome === "error" ? "the confirmation window could not be shown" : "the user cancelled in the confirmation window";
+      const kept = draft ? " The draft stays in Mail's Drafts." : "";
+      return refusal(
+        `NOT EXECUTED \u2014 ${why}. Nothing was sent or changed.${kept} Do not retry unless the user asks.`
+      );
+    }
+    if (!draft) return exec(rest);
+    const state = await drafts.check(draft).catch((error63) => ({
+      state: "error",
+      error: error63 instanceof Error ? error63.message : String(error63)
+    }));
+    if (state.state === "missing") {
+      return refusal(
+        `NOT SENT AGAIN \u2014 the draft is no longer in Mail's Drafts` + (state.foundInSent ? `, and a message with this subject is in Sent: the user already sent it from Mail.` : `: the user sent or deleted it in Mail.`) + ` To avoid a duplicate, nothing was sent. Do not retry.`
+      );
+    }
+    if (state.state === "changed") {
+      return refusal(
+        `NOT SENT \u2014 the user edited the draft in Mail after approving it, so the approved content no longer matches. Nothing was sent; the edited draft is in Drafts. Tell the user to send it from Mail, or start over without a token.`
+      );
+    }
+    if (state.state === "error") {
+      return refusal(
+        `NOT SENT \u2014 the draft could not be checked (${state.error}), so whether it was already sent from Mail is unknown. Nothing was sent. Do not retry; ask the user to check Mail.`
+      );
+    }
+    const result = await exec(rest);
+    if (result.isError) {
+      return appendText(result, "The draft stays in Mail's Drafts.");
+    }
+    const removed = await drafts.remove({ ...draft, snapshot: state.snapshot }).catch(() => false);
+    return appendText(
+      result,
+      removed ? "The matching draft was removed from Drafts." : "Sent, but the matching draft could not be removed from Drafts; delete it in Mail."
     );
   }
   expire() {
@@ -111508,6 +111605,181 @@ Show this to the user and ask whether to proceed. Only if the user explicitly ap
     }
   }
 };
+
+// src/utils/draftTracker.ts
+import { createHash as createHash4 } from "node:crypto";
+import { execFile as execFile2 } from "node:child_process";
+var RS = "";
+var US = "";
+function runMail(lines, argv, timeoutMs = 3e4) {
+  const args = lines.flatMap((line) => ["-e", line]);
+  return new Promise((resolve5, reject) => {
+    execFile2("osascript", [...args, ...argv], { timeout: timeoutMs }, (error63, stdout, stderr) => {
+      if (error63)
+        reject(
+          new Error(
+            String(stderr || error63.message).trim().slice(0, 200)
+          )
+        );
+      else resolve5(String(stdout).replace(/\n$/, ""));
+    });
+  });
+}
+var SERIALIZE = [
+  "on joinList(xs)",
+  `  set AppleScript's text item delimiters to ","`,
+  "  set s to xs as text",
+  `  set AppleScript's text item delimiters to ""`,
+  "  return s",
+  "end joinList",
+  "on describeMessage(m)",
+  '  tell application "Mail"',
+  "    set us to character id 31",
+  '    set c to ""',
+  "    try",
+  "      set c to content of m",
+  "    end try",
+  "    return ((id of m) as text) & us & (subject of m) & us & (sender of m) & us & my joinList(address of to recipients of m) & us & my joinList(address of cc recipients of m) & us & my joinList(address of bcc recipients of m) & us & c",
+  "  end tell",
+  "end describeMessage"
+];
+function normalizeContent(content3) {
+  return content3.replace(/[\uFFFC\u200B-\u200D\uFEFF]/g, "").replace(/\s+/g, " ").trim();
+}
+function parse5(record2) {
+  const parts = record2.split(US);
+  if (parts.length < 7) return void 0;
+  const [id, subject, sender, to, cc, bcc, ...content3] = parts;
+  const split = (s) => (s ? s.split(",").map((x) => x.trim().toLowerCase()) : []).sort();
+  return {
+    id,
+    subject,
+    sender,
+    to: split(to),
+    cc: split(cc),
+    bcc: split(bcc),
+    contentHash: createHash4("sha256").update(normalizeContent(content3.join(US))).digest("hex")
+  };
+}
+async function listDraftIds() {
+  const out = await runMail(
+    [
+      "on run argv",
+      'tell application "Mail" to set ids to id of (messages of drafts mailbox whose deleted status is false)',
+      `set AppleScript's text item delimiters to ","`,
+      "return ids as text",
+      "end run"
+    ],
+    []
+  );
+  return out ? out.split(",").map((s) => s.trim()) : [];
+}
+async function readDraft(id) {
+  const out = await runMail(
+    [
+      ...SERIALIZE,
+      "on run argv",
+      'tell application "Mail"',
+      "  set ms to (messages of drafts mailbox whose id is ((item 1 of argv) as integer) and deleted status is false)",
+      '  if (count of ms) is 0 then return ""',
+      "  return my describeMessage(item 1 of ms)",
+      "end tell",
+      "end run"
+    ],
+    [id]
+  );
+  return out ? parse5(out) : void 0;
+}
+async function draftsWithSubject(subject) {
+  const out = await runMail(
+    [
+      ...SERIALIZE,
+      "on run argv",
+      'tell application "Mail"',
+      "  set ms to (messages of drafts mailbox whose subject is (item 1 of argv) and deleted status is false)",
+      "  set out to {}",
+      "  repeat with m in ms",
+      "    set end of out to my describeMessage(m)",
+      "  end repeat",
+      "end tell",
+      "set AppleScript's text item delimiters to character id 30",
+      "return out as text",
+      "end run"
+    ],
+    [subject]
+  );
+  return out.split(RS).map(parse5).filter((d) => !!d);
+}
+async function sentSince(subject, since) {
+  const out = await runMail(
+    [
+      "on run argv",
+      "set cutoff to (current date) - ((item 2 of argv) as integer)",
+      'tell application "Mail"',
+      "  set n to count of (messages of sent mailbox whose subject is (item 1 of argv) and date sent \u2265 cutoff)",
+      "end tell",
+      "return n as text",
+      "end run"
+    ],
+    [subject, String(Math.max(0, Math.ceil((Date.now() - since.getTime()) / 1e3) + 5))]
+  );
+  return Number(out) > 0;
+}
+async function revealDraft(id) {
+  await runMail(
+    [
+      "on run argv",
+      'tell application "Mail"',
+      "  set m to first message of drafts mailbox whose id is ((item 1 of argv) as integer)",
+      "  activate",
+      "  try",
+      "    if (count of message viewers) is 0 then make new message viewer",
+      "    set mv to message viewer 1",
+      "    set selected mailboxes of mv to {drafts mailbox}",
+      "    set selected messages of mv to {m}",
+      "  on error",
+      "    open m",
+      "  end try",
+      "end tell",
+      "end run"
+    ],
+    [id]
+  );
+}
+async function deleteDraft(id) {
+  try {
+    await runMail(
+      [
+        "on run argv",
+        'tell application "Mail"',
+        "  delete (first message of drafts mailbox whose id is ((item 1 of argv) as integer))",
+        "end tell",
+        "end run"
+      ],
+      [id]
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+function sameContent(a, b) {
+  return a.subject === b.subject && a.contentHash === b.contentHash && a.to.join() === b.to.join() && a.cc.join() === b.cc.join() && a.bcc.join() === b.bcc.join();
+}
+async function checkDraft(saved, createdAt) {
+  let current = await readDraft(saved.id);
+  if (!current) {
+    current = (await draftsWithSubject(saved.subject)).find((d) => sameContent(d, saved));
+  }
+  if (!current) {
+    const foundInSent = await sentSince(saved.subject, createdAt).catch(() => false);
+    return { state: "missing", foundInSent };
+  }
+  if (await sentSince(saved.subject, createdAt).catch(() => false)) {
+    return { state: "missing", foundInSent: true };
+  }
+  return sameContent(current, saved) ? { state: "unchanged", snapshot: current } : { state: "changed", snapshot: current };
+}
 
 // src/index.ts
 init_auditLog();
@@ -111724,11 +111996,10 @@ function registerTool(name2, config2, cb) {
       }
     };
     const run2 = cb;
-    cb = (async (args, extra) => {
-      const refused = await confirmationGate.check(name2, args, messageLookup(extra));
-      if (refused) return refused;
-      return run2(stripToken(args), extra);
-    });
+    cb = (async (args, extra) => confirmationGate.run(name2, args, async (approved) => run2(approved, extra), {
+      lookup: messageLookup(extra),
+      drafts: mailDrafts(extra)
+    }));
   }
   const tool = registerToolWithContracts(
     server,
@@ -111746,8 +112017,8 @@ function registerTool(name2, config2, cb) {
 var confirmationGate = new ConfirmationGate();
 void nativeDialogBinary();
 var registeredTools = /* @__PURE__ */ new Map();
-function messageLookup(extra) {
-  const call = async (tool, args) => {
+function callTool(extra) {
+  return async (tool, args) => {
     const handler = registeredTools.get(tool)?.handler;
     if (!handler) throw new Error(`${tool} is not available`);
     let timer;
@@ -111765,6 +112036,65 @@ function messageLookup(extra) {
       clearTimeout(timer);
     }
   };
+}
+function mailDrafts(extra) {
+  const call = callTool(extra);
+  const describeSender = async (sender) => {
+    const email3 = /<([^>]+)>/.exec(sender)?.[1] ?? sender.trim();
+    try {
+      const listed = (await call("list-accounts", {})).accounts;
+      const owner = (Array.isArray(listed) ? listed : []).find(
+        (a) => (a.addresses ?? []).some(
+          (x) => x.toLowerCase() === email3.toLowerCase()
+        )
+      );
+      return owner?.name ? `${owner.name} \xB7 ${email3}` : email3;
+    } catch {
+      return email3;
+    }
+  };
+  return {
+    async prepare(tool, args) {
+      let draftCall;
+      if (tool === "send-email") {
+        if (args.inReplyTo || args.references || args.replyTo || args.composition) return void 0;
+        if (args.transport === "smtp") return void 0;
+        const { to, subject, body, cc, bcc, account, attachments } = args;
+        draftCall = {
+          tool: "create-draft",
+          args: { to, subject, body, cc, bcc, account, attachments }
+        };
+      } else if (tool === "reply-to-message" || tool === "forward-message") {
+        if (args.composition) return void 0;
+        draftCall = { tool, args: { ...args, send: false } };
+      } else {
+        return void 0;
+      }
+      const createdAt = /* @__PURE__ */ new Date();
+      const before = new Set(await listDraftIds());
+      await call(draftCall.tool, draftCall.args);
+      const fresh = (await listDraftIds()).filter((id) => !before.has(id));
+      if (fresh.length !== 1) return void 0;
+      const snapshot = await readDraft(fresh[0]);
+      if (!snapshot) return void 0;
+      return {
+        snapshot,
+        createdAt,
+        route: {
+          from: await describeSender(snapshot.sender),
+          to: snapshot.to,
+          cc: snapshot.cc,
+          bcc: snapshot.bcc
+        }
+      };
+    },
+    check: (draft) => checkDraft(draft.snapshot, draft.createdAt),
+    reveal: (draft) => revealDraft(draft.snapshot.id),
+    remove: (draft) => deleteDraft(draft.snapshot.id)
+  };
+}
+function messageLookup(extra) {
+  const call = callTool(extra);
   const str2 = (v) => typeof v === "string" && v ? v : void 0;
   return async (id, { account, mailbox, withBody, withImage }) => {
     const info = {};

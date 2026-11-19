@@ -172,8 +172,15 @@ import {
   CONFIRMED_TOOLS,
   ConfirmationGate,
   confirmationTokenSchema,
-  stripToken,
+  type DraftOps,
 } from "@/utils/confirmationGate.js";
+import {
+  checkDraft,
+  deleteDraft,
+  listDraftIds,
+  readDraft,
+  revealDraft,
+} from "@/utils/draftTracker.js";
 import { isImageName, type MessageInfo, type MessageLookup } from "@/utils/operationDetails.js";
 import { nativeDialogBinary } from "@/utils/confirmDialog.js";
 import {
@@ -593,12 +600,15 @@ function registerTool<
         [CONFIRMATION_TOKEN_PARAM]: confirmationTokenSchema,
       } as unknown as InputArgs,
     };
-    const run = cb as unknown as (args: Record<string, unknown>, extra: unknown) => unknown;
-    cb = (async (args: Record<string, unknown>, extra: unknown) => {
-      const refused = await confirmationGate.check(name, args, messageLookup(extra));
-      if (refused) return refused;
-      return run(stripToken(args), extra);
-    }) as unknown as ToolCallback<InputArgs>;
+    const run = cb as unknown as (
+      args: Record<string, unknown>,
+      extra: unknown
+    ) => CallToolResult | Promise<CallToolResult>;
+    cb = (async (args: Record<string, unknown>, extra: unknown) =>
+      confirmationGate.run(name, args, async (approved) => run(approved, extra), {
+        lookup: messageLookup(extra),
+        drafts: mailDrafts(extra),
+      })) as unknown as ToolCallback<InputArgs>;
   }
   const tool = registerToolWithContracts(
     server,
@@ -624,8 +634,9 @@ const registeredTools = new Map<string, RegisteredTool>();
  * Reads a message for the confirmation window through the read tools' own
  * handlers, so IMAP and AppleScript ids resolve exactly as they do for reads.
  */
-function messageLookup(extra: unknown): MessageLookup {
-  const call = async (tool: string, args: Record<string, unknown>) => {
+/** Calls another tool's handler and returns its structured result; throws on a tool error. */
+function callTool(extra: unknown) {
+  return async (tool: string, args: Record<string, unknown>) => {
     const handler = registeredTools.get(tool)?.handler as
       ((a: Record<string, unknown>, e: unknown) => Promise<CallToolResult>) | undefined;
     if (!handler) throw new Error(`${tool} is not available`);
@@ -644,6 +655,73 @@ function messageLookup(extra: unknown): MessageLookup {
       clearTimeout(timer);
     }
   };
+}
+
+/**
+ * Saves a pending send as a Mail draft and checks it again before sending, so a
+ * draft the person already sent from Mail is never sent a second time.
+ */
+function mailDrafts(extra: unknown): DraftOps {
+  const call = callTool(extra);
+  /** "Google · me@example.com" for the account that owns the draft's sender address. */
+  const describeSender = async (sender: string) => {
+    const email = /<([^>]+)>/.exec(sender)?.[1] ?? sender.trim();
+    try {
+      const listed = (await call("list-accounts", {})).accounts;
+      const owner = (Array.isArray(listed) ? listed : []).find((a) =>
+        ((a as { addresses?: string[] }).addresses ?? []).some(
+          (x) => x.toLowerCase() === email.toLowerCase()
+        )
+      ) as { name?: string } | undefined;
+      return owner?.name ? `${owner.name} · ${email}` : email;
+    } catch {
+      return email;
+    }
+  };
+  return {
+    async prepare(tool, args) {
+      let draftCall: { tool: string; args: Record<string, unknown> };
+      if (tool === "send-email") {
+        // Threading headers, SMTP-only fields and the native editor have no plain draft.
+        if (args.inReplyTo || args.references || args.replyTo || args.composition) return undefined;
+        if (args.transport === "smtp") return undefined;
+        const { to, subject, body, cc, bcc, account, attachments } = args;
+        draftCall = {
+          tool: "create-draft",
+          args: { to, subject, body, cc, bcc, account, attachments },
+        };
+      } else if (tool === "reply-to-message" || tool === "forward-message") {
+        if (args.composition) return undefined;
+        draftCall = { tool, args: { ...args, send: false } };
+      } else {
+        return undefined;
+      }
+      const createdAt = new Date();
+      const before = new Set(await listDraftIds());
+      await call(draftCall.tool, draftCall.args);
+      const fresh = (await listDraftIds()).filter((id) => !before.has(id));
+      if (fresh.length !== 1) return undefined;
+      const snapshot = await readDraft(fresh[0]);
+      if (!snapshot) return undefined;
+      return {
+        snapshot,
+        createdAt,
+        route: {
+          from: await describeSender(snapshot.sender),
+          to: snapshot.to,
+          cc: snapshot.cc,
+          bcc: snapshot.bcc,
+        },
+      };
+    },
+    check: (draft) => checkDraft(draft.snapshot, draft.createdAt),
+    reveal: (draft) => revealDraft(draft.snapshot.id),
+    remove: (draft) => deleteDraft(draft.snapshot.id),
+  };
+}
+
+function messageLookup(extra: unknown): MessageLookup {
+  const call = callTool(extra);
   const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
   return async (id, { account, mailbox, withBody, withImage }) => {
     const info: MessageInfo = {};

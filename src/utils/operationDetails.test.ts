@@ -51,8 +51,11 @@ describe("describeOperation", () => {
     expect(d.action).toBe("即将发送邮件");
     expect(d.kind).toBe("send");
     expect(d.confirmLabel).toBe("确认发送");
-    expect(field(d, "收件人")).toBe("a@example.com, b@example.com");
-    expect(field(d, "抄送")).toBe("c@example.com");
+    expect(d.highlights?.find((f) => f.label === "收件人")?.value).toBe(
+      "a@example.com, b@example.com"
+    );
+    expect(d.highlights?.find((f) => f.label === "抄送")?.value).toBe("c@example.com");
+    expect(d.highlights?.find((f) => f.label === "发件邮箱")?.value).toBe("Mail 的默认发件账号");
     expect(field(d, "主题")).toBe("Report");
     expect(field(d, "附件")).toBe("2 个：report.pdf, chart.png");
     expect(d.summary).toBe("Hi");
@@ -85,6 +88,29 @@ describe("describeOperation", () => {
       { withImage: false }
     );
     expect(d.imagePath).toBeUndefined();
+  });
+
+  it("takes sender and recipients from the saved draft when there is one", async () => {
+    const d = await describeOperation(
+      "reply-to-message",
+      { id: "42", body: "Thanks!", replyAll: true },
+      async () => ({ subject: "Plan", from: "boss@example.com" }),
+      {
+        withImage: false,
+        route: {
+          from: "Google · me@example.com",
+          to: ["boss@example.com"],
+          cc: ["x@example.com"],
+          bcc: [],
+        },
+      }
+    );
+    expect(d.highlights).toEqual([
+      { label: "发件邮箱", value: "Google · me@example.com" },
+      { label: "收件人", value: "boss@example.com" },
+      { label: "抄送", value: "x@example.com" },
+    ]);
+    expect(d.draftAvailable).toBe(true);
   });
 
   it("names the original message for reply-all", async () => {
@@ -150,7 +176,7 @@ describe("describeOperation", () => {
     );
     const text = detailsText(d);
     expect(text).toContain("【即将发送邮件】");
-    expect(text).toContain("收件人：a@example.com");
+    expect(text).toContain("★ 收件人：a@example.com");
     expect(text).toContain("内容摘要：Body");
   });
 });

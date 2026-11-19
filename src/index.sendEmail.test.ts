@@ -26,8 +26,12 @@ vi.mock("@/services/fileConfig.js", () => ({
 vi.mock("@/utils/confirmationGate.js", async (original) => ({
   ...(await original<typeof import("@/utils/confirmationGate.js")>()),
   ConfirmationGate: class {
-    async check() {
-      return null;
+    async run(
+      _tool: string,
+      args: Record<string, unknown>,
+      exec: (a: Record<string, unknown>) => unknown
+    ) {
+      return exec(args);
     }
   },
 }));

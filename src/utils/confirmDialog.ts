@@ -16,8 +16,17 @@ import { detailsText, type OperationDetails } from "@/utils/operationDetails.js"
 
 export type PromptOutcome = "approved" | "cancelled" | "timeout" | "error";
 
+export interface PromptActions {
+  /** Called when the person asks to see the draft in Mail; the window stays open. */
+  openDraft?: () => void;
+}
+
 /** Shows the dialog and resolves once the person has answered. */
-export type HumanPrompt = (title: string, details: OperationDetails) => Promise<PromptOutcome>;
+export type HumanPrompt = (
+  title: string,
+  details: OperationDetails,
+  actions?: PromptActions
+) => Promise<PromptOutcome>;
 
 const TIMEOUT_SECONDS = 180;
 const CODE_PATTERN = /^[A-Za-z0-9]{6}$/;
@@ -67,18 +76,34 @@ export function nativeDialogBinary(): Promise<string | undefined> {
   return building;
 }
 
-function runNative(binary: string, title: string, details: OperationDetails) {
+function runNative(
+  binary: string,
+  title: string,
+  details: OperationDetails,
+  actions: PromptActions
+) {
   return new Promise<PromptOutcome>((resolve) => {
     const env = { ...process.env };
     delete env.CONFIRM_DIALOG_SNAPSHOT;
     const child = spawn(binary, [], { env, stdio: ["pipe", "pipe", "ignore"] });
     let out = "";
+    let word = "";
     const timer = setTimeout(() => child.kill(), (TIMEOUT_SECONDS + 20) * 1000);
-    child.stdout.on("data", (chunk) => (out += String(chunk)));
+    // The window prints OPEN_DRAFT while it stays open, and its answer last.
+    child.stdout.on("data", (chunk) => {
+      out += String(chunk);
+      let newline: number;
+      while ((newline = out.indexOf("\n")) >= 0) {
+        const line = out.slice(0, newline).trim();
+        out = out.slice(newline + 1);
+        if (line === "OPEN_DRAFT") actions.openDraft?.();
+        else if (line) word = line;
+      }
+    });
     child.on("error", () => resolve("error"));
     child.on("close", () => {
       clearTimeout(timer);
-      const word = out.trim();
+      if (out.trim()) word = out.trim();
       resolve(
         word === "APPROVED"
           ? "approved"
@@ -129,7 +154,10 @@ function runFallback(title: string, text: string): Promise<PromptOutcome | "retr
 
 /** Plain AppleScript dialog: up to three tries to type 6 letters or digits. */
 async function fallbackPrompt(title: string, details: OperationDetails): Promise<PromptOutcome> {
-  let body = `${detailsText(details)}\n\n请输入任意 6 位字母或数字后点“确定”；点“取消”则不执行。`;
+  const draft = details.draftAvailable
+    ? "\n\n草稿已存在 Mail 草稿箱，可以先去 Mail 里查看；在 Mail 里自己发送的话，这里不会重复发送。"
+    : "";
+  let body = `${detailsText(details)}${draft}\n\n请输入任意 6 位字母或数字后点“确定”；点“取消”则不执行。`;
   for (let attempt = 0; attempt < 3; attempt++) {
     const outcome = await runFallback(title, body);
     if (outcome !== "retry") return outcome;
@@ -139,10 +167,10 @@ async function fallbackPrompt(title: string, details: OperationDetails): Promise
 }
 
 /** The real prompt: the native window, or the AppleScript dialog when it is unavailable. */
-export const macDialogPrompt: HumanPrompt = async (title, details) => {
+export const macDialogPrompt: HumanPrompt = async (title, details, actions = {}) => {
   const binary = await nativeDialogBinary();
   if (binary) {
-    const outcome = await runNative(binary, title, details);
+    const outcome = await runNative(binary, title, details, actions);
     if (outcome !== "error") return outcome;
   }
   return fallbackPrompt(title, details);

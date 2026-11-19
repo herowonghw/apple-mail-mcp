@@ -20,12 +20,25 @@ export interface OperationDetails {
   /** Label of the confirm button, e.g. "确认发送". */
   confirmLabel?: string;
   question: string;
+  /** Who it is from and to; shown first and emphasized. */
+  highlights?: DialogField[];
   fields: DialogField[];
   summary?: string;
+  /** A Mail draft backs this send and can be opened from the window. */
+  draftAvailable?: boolean;
   imagePath?: string;
   imageCaption?: string;
   /** Temporary files to remove once the dialog is closed. */
   tempFiles?: string[];
+}
+
+/** Sender and recipients as Mail will actually use them (read from the saved draft). */
+export interface Route {
+  /** e.g. "Google · me@example.com". */
+  from: string;
+  to: string[];
+  cc: string[];
+  bcc: string[];
 }
 
 /** What the server could read about an existing message. */
@@ -146,12 +159,23 @@ export async function describeOperation(
   tool: string,
   args: Record<string, unknown>,
   lookup: MessageLookup,
-  options: { withImage: boolean }
+  options: { withImage: boolean; route?: Route }
 ): Promise<OperationDetails> {
   const fields: DialogField[] = [];
+  const highlights: DialogField[] = [];
+  const route = options.route;
+  /** From/To/Cc/Bcc: the saved draft's when there is one, else what the call asked for. */
+  const routeFrom = (fallbackFrom: string, to: unknown, cc?: unknown, bcc?: unknown) => {
+    push(highlights, "发件邮箱", route?.from ?? fallbackFrom);
+    push(highlights, "收件人", route ? route.to : to);
+    push(highlights, "抄送", route ? route.cc : cc);
+    push(highlights, "密送", route ? route.bcc : bcc);
+  };
   const tempFiles: string[] = [];
   const done = (d: Omit<OperationDetails, "fields" | "tempFiles">): OperationDetails => ({
     ...d,
+    ...(highlights.length > 0 ? { highlights } : {}),
+    ...(route ? { draftAvailable: true } : {}),
     fields,
     ...(tempFiles.length > 0 ? { tempFiles } : {}),
   });
@@ -178,10 +202,12 @@ export async function describeOperation(
 
   switch (tool) {
     case "send-email": {
-      push(fields, "发件账号", args.account ?? "默认账号");
-      push(fields, "收件人", args.to);
-      push(fields, "抄送", args.cc);
-      push(fields, "密送", args.bcc);
+      routeFrom(
+        args.account ? `${String(args.account)}（账号）` : "Mail 的默认发件账号",
+        args.to,
+        args.cc,
+        args.bcc
+      );
       push(fields, "主题", args.subject);
       const image = withOutgoing(args.attachments);
       return done({
@@ -197,8 +223,12 @@ export async function describeOperation(
       const recipients = Array.isArray(args.recipients)
         ? (args.recipients as Array<{ email?: string }>).map((r) => r.email ?? "")
         : [];
-      push(fields, "发件账号", args.account ?? "默认账号");
-      fields.push({
+      push(
+        highlights,
+        "发件邮箱",
+        args.account ? `${String(args.account)}（账号）` : "Mail 的默认发件账号"
+      );
+      highlights.push({
         label: "收件人",
         value: `${recipients.length} 人，每人单独一封：${recipients.slice(0, 8).join(", ")}${
           recipients.length > 8 ? " …" : ""
@@ -216,11 +246,13 @@ export async function describeOperation(
     case "reply-to-message": {
       const all = args.replyAll === true;
       const info = await readOne(String(args.id), args.account, args.mailbox, false);
+      if (route) {
+        routeFrom("", []);
+      } else {
+        push(highlights, "发件邮箱", "原邮件所在账号");
+        push(highlights, "回复给", all ? "原发件人及所有收件人（回复全部）" : "原发件人");
+      }
       messageFields(fields, info, "原邮件");
-      fields.push({
-        label: "回复对象",
-        value: all ? "原发件人及所有收件人（回复全部）" : "原发件人",
-      });
       const image = withOutgoing(args.attachments);
       return done({
         action: all ? "即将回复全部" : "即将回复邮件",
@@ -234,7 +266,11 @@ export async function describeOperation(
       });
     }
     case "forward-message": {
-      push(fields, "转发给", args.to);
+      if (route) routeFrom("", []);
+      else {
+        push(highlights, "发件邮箱", "原邮件所在账号");
+        push(highlights, "转发给", args.to);
+      }
       const info = await readOne(String(args.id), args.account, args.mailbox, !args.body);
       messageFields(fields, info, "原邮件");
       const image = withOutgoing(args.attachments);
@@ -371,6 +407,8 @@ export async function describeOperation(
 /** The details as plain text, for the model's preview and the fallback dialog. */
 export function detailsText(details: OperationDetails): string {
   const lines = [`【${details.action}】`, details.question, ""];
+  for (const f of details.highlights ?? []) lines.push(`★ ${f.label}：${f.value}`);
+  if (details.highlights?.length) lines.push("");
   for (const f of details.fields) lines.push(`${f.label}：${f.value}`);
   if (details.summary) lines.push("", `内容摘要：${details.summary}`);
   return lines.join("\n");
