@@ -101112,15 +101112,24 @@ function main(input) {
   }
   stage('identity');
   checkMessage();
+  // Bring Mail forward before looking for the composer: accessibility only lists
+  // windows on the current Space, and Mail may live on another desktop or display.
+  // This only switches the foreground app; nothing is clicked or typed yet.
+  process.frontmost = true;
+  for (var shown = 0; shown < 30 && !process.frontmost(); shown++) delay(0.1);
+  delay(0.6);
   var target = findMarkedComposer(process, input, checkMessage);
   var window = target.window, subject = target.subject, body = target.body;
   stage('focus');
   process.frontmost = true;
   window.attributes.byName('AXMain').value = true;
-  for (var ready = 0; ready < 20; ready++) {
+  for (var ready = 0; ready < 30; ready++) {
     if (process.frontmost() && attr(window, 'AXMain') === true) break;
     delay(0.1);
   }
+  // Activating Mail can switch Spaces (another desktop or display); clicks and
+  // keys sent while that animation runs miss the editor. Let it settle first.
+  delay(0.6);
   // Mail reports AXFocused=false on the editor even when it owns focus.
   // Click the exact AX element, then inspect the application's focused element.
   // AXPress on Mail's WebArea is a no-op on some macOS versions. Click inside
@@ -112171,7 +112180,7 @@ async function sendCompose(outgoingId) {
 }
 var NATIVE_MARKER_PREFIX = "MCP Native ";
 async function cleanupNativeLeftovers(before, bodyHint) {
-  await runMail(
+  const closeMarked = () => runMail(
     [
       "on run argv",
       'tell application "Mail"',
@@ -112185,6 +112194,10 @@ async function cleanupNativeLeftovers(before, bodyHint) {
     ],
     [NATIVE_MARKER_PREFIX]
   ).catch(() => "");
+  await closeMarked();
+  await sleep2(1500);
+  await closeMarked();
+  await sleep2(1e3);
   const hint = normalizeContent(bodyHint).slice(0, 40);
   for (const id of (await listDraftIds()).filter((x) => !before.has(x))) {
     const draft = await readDraftFull(id);
@@ -113646,30 +113659,47 @@ async function toNumericMailId(id) {
 async function preferNativeEditor(args, run2) {
   const smtp = args.transport === "smtp" || args.send !== false && args.transport !== "applescript" && composeDeps.smtpConfigured();
   if (args.composition !== void 0 || smtp) return run2(args);
-  const note = (result, text) => ({
+  const report = (result, quoteFormat, text) => ({
     ...result,
-    content: [...result.content, { type: "text", text }]
+    content: text ? [...result.content, { type: "text", text }] : result.content,
+    ...result.structuredContent ? {
+      structuredContent: {
+        ...result.structuredContent,
+        quoteFormat,
+        ...text ? { formatNote: text } : {}
+      }
+    } : {}
   });
   const ready = mailManager.nativeEditorReady();
   if (!ready.success) {
-    return note(
+    return report(
       await run2(args),
-      `Mail's native reply format was not used (${ready.error ?? "native editor unavailable"}); the quote is plain text.`
+      "plain-text",
+      `Mail's native reply format was not used (${ready.error ?? "native editor unavailable"}); the quote is plain text. Tell the user.`
     );
   }
-  const before = new Set(await listDraftIds().catch(() => []));
-  const native = await run2({ ...args, composition: "native-editor" });
-  if (!native.isError) return native;
-  const reason = native.content.map((c) => c.text ?? "").join(" ").trim();
-  if (!/nothing was sent|nothing finalized/i.test(reason ?? "")) return native;
   const hint = String(args.body ?? "");
-  await cleanupNativeLeftovers(before, hint).catch(() => void 0);
+  const before = new Set(await listDraftIds().catch(() => []));
+  const reasons = [];
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const native = await run2({ ...args, composition: "native-editor" });
+    if (!native.isError) return report(native, "mail-native");
+    const reason = native.content.map((c) => c.text ?? "").join(" ").trim();
+    const beforeSend = /Native Mail composition|Mail's Paste command is unavailable|nothing was sent|nothing finalized/i.test(
+      reason
+    ) && !/did not accept the native send|inspect the compose before retrying/i.test(reason);
+    if (!beforeSend) return native;
+    reasons.push(reason.slice(0, 160));
+    await cleanupNativeLeftovers(before, hint).catch(() => void 0);
+    await new Promise((r) => setTimeout(r, 1500));
+  }
   const plain = await run2(args);
   await new Promise((r) => setTimeout(r, 6e3));
   await cleanupNativeLeftovers(before, hint).catch(() => void 0);
-  return note(
+  return report(
     plain,
-    `Mail's native reply format could not be used this time (${reason?.slice(0, 160)}); its half-made compose was removed and the plain-text quote was used instead.`
+    "plain-text",
+    `Mail's native reply format could not be used (two tries; Mail must stay in front while the text is inserted: ${reasons.join(" / ")}). The half-made composes were removed and the plain-text quote was used instead. Tell the user.`
   );
 }
 var composeDeps = {

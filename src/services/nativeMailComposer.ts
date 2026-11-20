@@ -202,15 +202,24 @@ function main(input) {
   }
   stage('identity');
   checkMessage();
+  // Bring Mail forward before looking for the composer: accessibility only lists
+  // windows on the current Space, and Mail may live on another desktop or display.
+  // This only switches the foreground app; nothing is clicked or typed yet.
+  process.frontmost = true;
+  for (var shown = 0; shown < 30 && !process.frontmost(); shown++) delay(0.1);
+  delay(0.6);
   var target = findMarkedComposer(process, input, checkMessage);
   var window = target.window, subject = target.subject, body = target.body;
   stage('focus');
   process.frontmost = true;
   window.attributes.byName('AXMain').value = true;
-  for (var ready = 0; ready < 20; ready++) {
+  for (var ready = 0; ready < 30; ready++) {
     if (process.frontmost() && attr(window, 'AXMain') === true) break;
     delay(0.1);
   }
+  // Activating Mail can switch Spaces (another desktop or display); clicks and
+  // keys sent while that animation runs miss the editor. Let it settle first.
+  delay(0.6);
   // Mail reports AXFocused=false on the editor even when it owns focus.
   // Click the exact AX element, then inspect the application's focused element.
   // AXPress on Mail's WebArea is a no-op on some macOS versions. Click inside

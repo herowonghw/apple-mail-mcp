@@ -556,20 +556,26 @@ const NATIVE_MARKER_PREFIX = "MCP Native ";
  * inserted). A draft holding the body, and any older draft, is kept.
  */
 export async function cleanupNativeLeftovers(before: Set<string>, bodyHint: string): Promise<void> {
-  await runMail(
-    [
-      "on run argv",
-      'tell application "Mail"',
-      "  repeat with om in (every outgoing message whose subject starts with (item 1 of argv))",
-      "    try",
-      "      close om saving no",
-      "    end try",
-      "  end repeat",
-      "end tell",
-      "end run",
-    ],
-    [NATIVE_MARKER_PREFIX]
-  ).catch(() => "");
+  const closeMarked = () =>
+    runMail(
+      [
+        "on run argv",
+        'tell application "Mail"',
+        "  repeat with om in (every outgoing message whose subject starts with (item 1 of argv))",
+        "    try",
+        "      close om saving no",
+        "    end try",
+        "  end repeat",
+        "end tell",
+        "end run",
+      ],
+      [NATIVE_MARKER_PREFIX]
+    ).catch(() => "");
+  // Closing can make Mail store the compose once more; close twice, then sweep.
+  await closeMarked();
+  await sleep(1500);
+  await closeMarked();
+  await sleep(1000);
   const hint = normalizeContent(bodyHint).slice(0, 40);
   for (const id of (await listDraftIds()).filter((x) => !before.has(x))) {
     const draft = await readDraftFull(id);

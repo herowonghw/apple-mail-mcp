@@ -2321,43 +2321,74 @@ async function toNumericMailId(id: string): Promise<{ numericId?: string; error?
  */
 async function preferNativeEditor<
   A extends Record<string, unknown>,
-  R extends { content: Array<{ type: string; text?: string }>; isError?: boolean },
+  R extends {
+    content: Array<{ type: string; text?: string }>;
+    isError?: boolean;
+    structuredContent?: Record<string, unknown>;
+  },
 >(args: A, run: (a: A) => Promise<R>): Promise<R> {
   const smtp =
     args.transport === "smtp" ||
     (args.send !== false && args.transport !== "applescript" && composeDeps.smtpConfigured());
   if (args.composition !== undefined || smtp) return run(args);
-  const note = (result: R, text: string): R => ({
+  // The format is reported in structuredContent too: clients may show the model
+  // only that, and the user should hear when Mail's own format was not used.
+  const report = (result: R, quoteFormat: string, text?: string): R => ({
     ...result,
-    content: [...result.content, { type: "text" as const, text }],
+    content: text ? [...result.content, { type: "text" as const, text }] : result.content,
+    ...(result.structuredContent
+      ? {
+          structuredContent: {
+            ...result.structuredContent,
+            quoteFormat,
+            ...(text ? { formatNote: text } : {}),
+          },
+        }
+      : {}),
   });
   const ready = mailManager.nativeEditorReady();
   if (!ready.success) {
-    return note(
+    return report(
       await run(args),
-      `Mail's native reply format was not used (${ready.error ?? "native editor unavailable"}); the quote is plain text.`
+      "plain-text",
+      `Mail's native reply format was not used (${ready.error ?? "native editor unavailable"}); ` +
+        `the quote is plain text. Tell the user.`
     );
   }
-  const before = new Set(await listDraftIds().catch(() => [] as string[]));
-  const native = await run({ ...args, composition: "native-editor" });
-  if (!native.isError) return native;
-  const reason = native.content
-    .map((c) => c.text ?? "")
-    .join(" ")
-    .trim();
-  // Only a failure that is known to have sent nothing may be retried another way.
-  if (!/nothing was sent|nothing finalized/i.test(reason ?? "")) return native;
-  // Mail may store the half-made compose a few seconds later, so sweep again after
-  // the plain-text attempt; the body hint keeps the draft that attempt saved.
   const hint = String(args.body ?? "");
-  await cleanupNativeLeftovers(before, hint).catch(() => undefined);
+  const before = new Set(await listDraftIds().catch(() => [] as string[]));
+  const reasons: string[] = [];
+  // Two tries: the editor needs Mail in front for a few seconds, and a click in
+  // another app during that time makes it stop (having sent nothing).
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const native = await run({ ...args, composition: "native-editor" });
+    if (!native.isError) return report(native, "mail-native");
+    const reason = native.content
+      .map((c) => c.text ?? "")
+      .join(" ")
+      .trim();
+    // Only a failure from before Mail was told to send may be retried or rerouted:
+    // the native editor's own refusals, never an unconfirmed send.
+    const beforeSend =
+      /Native Mail composition|Mail's Paste command is unavailable|nothing was sent|nothing finalized/i.test(
+        reason
+      ) && !/did not accept the native send|inspect the compose before retrying/i.test(reason);
+    if (!beforeSend) return native;
+    reasons.push(reason.slice(0, 160));
+    await cleanupNativeLeftovers(before, hint).catch(() => undefined);
+    await new Promise((r) => setTimeout(r, 1500));
+  }
   const plain = await run(args);
+  // Mail may store a half-made compose a few seconds later; sweep again. The body
+  // hint keeps the draft the plain-text attempt saved.
   await new Promise((r) => setTimeout(r, 6000));
   await cleanupNativeLeftovers(before, hint).catch(() => undefined);
-  return note(
+  return report(
     plain,
-    `Mail's native reply format could not be used this time (${reason?.slice(0, 160)}); ` +
-      `its half-made compose was removed and the plain-text quote was used instead.`
+    "plain-text",
+    `Mail's native reply format could not be used (two tries; Mail must stay in front ` +
+      `while the text is inserted: ${reasons.join(" / ")}). The half-made composes were ` +
+      `removed and the plain-text quote was used instead. Tell the user.`
   );
 }
 
