@@ -587,3 +587,22 @@ export async function cleanupNativeLeftovers(before: Set<string>, bodyHint: stri
     if (marked || (replyLike && !hasBody)) await deleteDraft(id);
   }
 }
+
+/**
+ * After a reply/forward was sent: deletes reply-like drafts that hold the same new
+ * text — earlier drafts of the message that was just sent. Other drafts are kept.
+ */
+export async function deleteDraftsWithBody(bodyHint: string): Promise<number> {
+  const hint = normalizeContent(bodyHint).slice(0, 60);
+  if (hint.length < 8) return 0;
+  let deleted = 0;
+  for (const id of await listDraftIds()) {
+    const draft = await readDraftFull(id);
+    if (!draft) continue;
+    const replyLike = /^(re|fw|fwd|回复|转发)\s*[:：]/i.test(draft.snapshot.subject);
+    if (replyLike && normalizeContent(draft.content).includes(hint) && (await deleteDraft(id))) {
+      deleted++;
+    }
+  }
+  return deleted;
+}

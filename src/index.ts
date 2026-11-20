@@ -181,6 +181,7 @@ import {
 import {
   checkDraft,
   cleanupNativeLeftovers,
+  deleteDraftsWithBody,
   composeMatches,
   deleteDraftCopies,
   focusCompose,
@@ -613,7 +614,20 @@ function registerTool<
     ) => CallToolResult | Promise<CallToolResult>;
     cb = (async (args: Record<string, unknown>, extra: unknown) => {
       const savesDraft = name === "create-draft" || name === "use-template" || args.send === false;
-      if (!savesDraft) return save(args, extra);
+      if (!savesDraft) {
+        const result = await save(args, extra);
+        // A sent reply/forward makes any saved draft of the same text obsolete
+        // (e.g. drafted first, then sent): remove those so none is left behind.
+        const hint = String(args.body ?? "");
+        if (
+          !result.isError &&
+          hint.trim() &&
+          (name === "reply-to-message" || name === "forward-message")
+        ) {
+          await deleteDraftsWithBody(hint).catch(() => undefined);
+        }
+        return result;
+      }
       const before = new Set(await listDraftIds().catch(() => [] as string[]));
       const result = await save(args, extra);
       if (!result.isError) {
@@ -676,14 +690,14 @@ const registeredTools = new Map<string, RegisteredTool>();
  * handlers, so IMAP and AppleScript ids resolve exactly as they do for reads.
  */
 /** Calls another tool's handler and returns its structured result; throws on a tool error. */
-function callTool(extra: unknown) {
+function callTool(extra: unknown, timeoutMs = 20_000) {
   return async (tool: string, args: Record<string, unknown>) => {
     const handler = registeredTools.get(tool)?.handler as
       ((a: Record<string, unknown>, e: unknown) => Promise<CallToolResult>) | undefined;
     if (!handler) throw new Error(`${tool} is not available`);
     let timer: NodeJS.Timeout | undefined;
     const timeout = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error("timed out")), 20_000);
+      timer = setTimeout(() => reject(new Error("timed out")), timeoutMs);
     });
     try {
       const result = await Promise.race([handler(args, extra), timeout]);
@@ -704,6 +718,9 @@ function callTool(extra: unknown) {
  */
 function mailDrafts(extra: unknown): DraftOps {
   const call = callTool(extra);
+  // Saving a reply/forward draft may try Mail's native editor twice and sweep
+  // (about a minute); a short timeout would lose track of the draft it saves.
+  const save = callTool(extra, 240_000);
   /** "Google · me@example.com" for the account that owns the draft's sender address. */
   const describeSender = async (sender: string) => {
     const email = /<([^>]+)>/.exec(sender)?.[1] ?? sender.trim();
@@ -800,7 +817,7 @@ function mailDrafts(extra: unknown): DraftOps {
       if (args.composition) return undefined;
       const createdAt = new Date();
       const before = new Set(await listDraftIds());
-      await call(tool, { ...args, send: false });
+      await save(tool, { ...args, send: false });
       const snapshot = await settleNewDraft(before, String(args.body ?? ""));
       if (!snapshot) return undefined;
       return { snapshot, createdAt, route: await routeOf(snapshot) };

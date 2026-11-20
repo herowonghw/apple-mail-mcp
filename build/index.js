@@ -112209,6 +112209,20 @@ async function cleanupNativeLeftovers(before, bodyHint) {
     if (marked || replyLike && !hasBody) await deleteDraft(id);
   }
 }
+async function deleteDraftsWithBody(bodyHint) {
+  const hint = normalizeContent(bodyHint).slice(0, 60);
+  if (hint.length < 8) return 0;
+  let deleted = 0;
+  for (const id of await listDraftIds()) {
+    const draft = await readDraftFull(id);
+    if (!draft) continue;
+    const replyLike = /^(re|fw|fwd|回复|转发)\s*[:：]/i.test(draft.snapshot.subject);
+    if (replyLike && normalizeContent(draft.content).includes(hint) && await deleteDraft(id)) {
+      deleted++;
+    }
+  }
+  return deleted;
+}
 
 // src/index.ts
 init_attachmentReadPolicy();
@@ -112420,7 +112434,14 @@ function registerTool(name2, config2, cb) {
     const save = cb;
     cb = (async (args, extra) => {
       const savesDraft = name2 === "create-draft" || name2 === "use-template" || args.send === false;
-      if (!savesDraft) return save(args, extra);
+      if (!savesDraft) {
+        const result2 = await save(args, extra);
+        const hint = String(args.body ?? "");
+        if (!result2.isError && hint.trim() && (name2 === "reply-to-message" || name2 === "forward-message")) {
+          await deleteDraftsWithBody(hint).catch(() => void 0);
+        }
+        return result2;
+      }
       const before = new Set(await listDraftIds().catch(() => []));
       const result = await save(args, extra);
       if (!result.isError) {
@@ -112467,13 +112488,13 @@ var DRAFT_SAVING_TOOLS = /* @__PURE__ */ new Set([
 ]);
 void nativeDialogBinary();
 var registeredTools = /* @__PURE__ */ new Map();
-function callTool(extra) {
+function callTool(extra, timeoutMs = 2e4) {
   return async (tool, args) => {
     const handler = registeredTools.get(tool)?.handler;
     if (!handler) throw new Error(`${tool} is not available`);
     let timer;
     const timeout = new Promise((_, reject) => {
-      timer = setTimeout(() => reject(new Error("timed out")), 2e4);
+      timer = setTimeout(() => reject(new Error("timed out")), timeoutMs);
     });
     try {
       const result = await Promise.race([handler(args, extra), timeout]);
@@ -112489,6 +112510,7 @@ function callTool(extra) {
 }
 function mailDrafts(extra) {
   const call = callTool(extra);
+  const save = callTool(extra, 24e4);
   const describeSender = async (sender) => {
     const email3 = /<([^>]+)>/.exec(sender)?.[1] ?? sender.trim();
     try {
@@ -112574,7 +112596,7 @@ function mailDrafts(extra) {
       if (args.composition) return void 0;
       const createdAt = /* @__PURE__ */ new Date();
       const before = new Set(await listDraftIds());
-      await call(tool, { ...args, send: false });
+      await save(tool, { ...args, send: false });
       const snapshot = await settleNewDraft(before, String(args.body ?? ""));
       if (!snapshot) return void 0;
       return { snapshot, createdAt, route: await routeOf(snapshot) };
