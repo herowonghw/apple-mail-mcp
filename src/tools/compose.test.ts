@@ -1050,3 +1050,40 @@ describe("rendered SMTP reply MIME", () => {
     expectNoApple(d);
   });
 });
+
+describe("added cc/bcc on reply and forward", () => {
+  it("passes added Cc/Bcc to Mail for an AppleScript reply draft", async () => {
+    const d = fixture();
+    d.smtpConfigured.mockReturnValue(false);
+    d.mail.getRawSource.mockReturnValue(raw);
+    d.numericId.mockResolvedValue({ numericId: "42" });
+    const result = await runReply(d, {
+      ...args,
+      id: "42",
+      send: false,
+      cc: ["will@example.com"],
+      bcc: ["me@example.com"],
+    });
+    expect(result.isError).not.toBe(true);
+    const call = d.mail.replyToMessage.mock.calls[0] as unknown[];
+    expect(call[7]).toEqual({ cc: ["will@example.com"], bcc: ["me@example.com"] });
+  });
+
+  it("refuses added Cc on the SMTP path instead of dropping it", async () => {
+    const d = fixture();
+    const result = await runReply(d, { ...args, cc: ["will@example.com"] });
+    expect(result.isError).toBe(true);
+    expect(d.smtpSend).not.toHaveBeenCalled();
+    expect(d.mail.replyToMessage).not.toHaveBeenCalled();
+  });
+
+  it("passes added Cc to Mail for an AppleScript forward", async () => {
+    const d = fixture();
+    d.smtpConfigured.mockReturnValue(false);
+    d.mail.getRawSource.mockReturnValue(raw);
+    d.numericId.mockResolvedValue({ numericId: "42" });
+    await runForward(d, { id: "42", to: ["a@example.com"], send: false, cc: ["b@example.com"] });
+    const call = d.mail.forwardMessage.mock.calls[0] as unknown[];
+    expect(call[7]).toEqual({ cc: ["b@example.com"], bcc: [] });
+  });
+});

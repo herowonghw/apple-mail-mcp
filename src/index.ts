@@ -603,6 +603,24 @@ function registerTool<
     const token = REFERENCES_SCHEMA.unwrap().element;
     z.globalRegistry.add(token, { ...token.meta(), description: IN_REPLY_TO_SCHEMA.description });
   }
+  // Saving a draft on Exchange can leave two copies, one without the new text:
+  // keep the copy that holds the body and delete the other (draftTracker.ts).
+  if (DRAFT_SAVING_TOOLS.has(name)) {
+    const save = cb as unknown as (
+      args: Record<string, unknown>,
+      extra: unknown
+    ) => CallToolResult | Promise<CallToolResult>;
+    cb = (async (args: Record<string, unknown>, extra: unknown) => {
+      const savesDraft = name === "create-draft" || name === "use-template" || args.send === false;
+      if (!savesDraft) return save(args, extra);
+      const before = new Set(await listDraftIds().catch(() => [] as string[]));
+      const result = await save(args, extra);
+      if (!result.isError) {
+        await settleNewDraft(before, String(args.body ?? "")).catch(() => undefined);
+      }
+      return result;
+    }) as unknown as ToolCallback<InputArgs>;
+  }
   // Sending and deleting tools act only after the user approves twice: once in
   // the conversation, once by typing a code into a macOS dialog (confirmationGate.ts).
   if (CONFIRMED_TOOLS.has(name)) {
@@ -641,6 +659,13 @@ function registerTool<
 }
 
 const confirmationGate = new ConfirmationGate();
+/** Tools that can save a new Mail draft. */
+const DRAFT_SAVING_TOOLS = new Set([
+  "create-draft",
+  "use-template",
+  "reply-to-message",
+  "forward-message",
+]);
 // Build the confirmation window in the background so the first prompt does not wait on swiftc.
 void nativeDialogBinary();
 const registeredTools = new Map<string, RegisteredTool>();
@@ -775,7 +800,7 @@ function mailDrafts(extra: unknown): DraftOps {
       const createdAt = new Date();
       const before = new Set(await listDraftIds());
       await call(tool, { ...args, send: false });
-      const snapshot = await settleNewDraft(before);
+      const snapshot = await settleNewDraft(before, String(args.body ?? ""));
       if (!snapshot) return undefined;
       return { snapshot, createdAt, route: await routeOf(snapshot) };
     },
@@ -2339,6 +2364,16 @@ registerTool(
         .default(true)
         .describe("Send immediately (false = save as draft)"),
       attachments: ATTACHMENTS_SCHEMA,
+      cc: z
+        .array(z.string())
+        .optional()
+        .describe(
+          "Extra Cc recipients to add (e.g. someone not on the original thread). Mail.app path only; refused with SMTP or the native editor."
+        ),
+      bcc: z
+        .array(z.string())
+        .optional()
+        .describe("Extra Bcc recipients to add. Mail.app path only, like cc."),
     },
     outputSchema: {
       transport: z.enum(["smtp", "applescript"]).optional(),
@@ -2387,6 +2422,16 @@ registerTool(
         .default(true)
         .describe("Send immediately (false = save as draft)"),
       attachments: ATTACHMENTS_SCHEMA,
+      cc: z
+        .array(z.string())
+        .optional()
+        .describe(
+          "Extra Cc recipients to add (e.g. someone not on the original thread). Mail.app path only; refused with SMTP or the native editor."
+        ),
+      bcc: z
+        .array(z.string())
+        .optional()
+        .describe("Extra Bcc recipients to add. Mail.app path only, like cc."),
     },
     outputSchema: {
       transport: z.enum(["smtp", "applescript"]).optional(),

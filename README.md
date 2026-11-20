@@ -953,6 +953,21 @@ Enable it in your MCP client config alongside the IMAP settings:
 
 ---
 
+#### `answer-pending-confirmation`
+
+Press the confirm or cancel button of a code-free confirmation window (fork addition).
+A gated call made with `skipCode: true` opens the confirmation window without the
+6-character code and returns `WAITING FOR CONFIRMATION` with an `actionId`; after the
+user says yes (or no) in the conversation, this tool presses the button and returns
+what the action did. A window that needs a code ignores it.
+
+| Parameter  | Type                      | Required | Description                                                      |
+| ---------- | ------------------------- | -------- | ---------------------------------------------------------------- |
+| `actionId` | string                    | Yes      | The `actionId` from the `WAITING FOR CONFIRMATION` result        |
+| `decision` | `"confirm"` \| `"cancel"` | Yes      | `confirm` only after the user explicitly said yes; else `cancel` |
+
+**Returns:** the result of the confirmed action, or why nothing was done.
+
 #### `send-serial-email`
 
 Send individual personalized emails to a list of recipients (mail merge). Each recipient receives their own email — recipients don't see each other. Supports `{{placeholder}}` tokens in both subject and body.

@@ -1050,6 +1050,18 @@ function draftSaveBlock(msgVar: string): string {
         close ${msgVar} saving yes`;
 }
 
+/** AppleScript adding Cc / Bcc recipients to a reply or forward compose object. */
+function extraRecipientCommands(msgVar: string, extra?: { cc?: string[]; bcc?: string[] }): string {
+  let commands = "";
+  for (const addr of extra?.cc ?? []) {
+    commands += `make new cc recipient at end of cc recipients of ${msgVar} with properties {address:"${escapeForAppleScript(addr)}"}\n`;
+  }
+  for (const addr of extra?.bcc ?? []) {
+    commands += `make new bcc recipient at end of bcc recipients of ${msgVar} with properties {address:"${escapeForAppleScript(addr)}"}\n`;
+  }
+  return commands;
+}
+
 /** Number of files a `buildAttachmentCommands` string attaches. */
 function countAttachmentCommands(commands: string): number {
   return (commands.match(/make new attachment/g) || []).length;
@@ -5221,7 +5233,8 @@ ${indent}end try${this.sanitizeFragment("_uacct", indent)}${this.sanitizeFragmen
     send = true,
     attachments?: AttachmentInput[],
     nativeEditor = false,
-    source?: { account: string; mailbox: string; messageId?: string }
+    source?: { account: string; mailbox: string; messageId?: string },
+    extra?: { cc?: string[]; bcc?: string[] }
   ): { success: boolean; error?: string } {
     if (nativeEditor) {
       return this.composeNative(send ? "send" : "draft", body, attachments, {
@@ -5246,6 +5259,7 @@ ${indent}end try${this.sanitizeFragment("_uacct", indent)}${this.sanitizeFragmen
         `
           set theReply to reply msg without opening window${replyAllClause}
           ${senderFragment("theReply", "reply")}
+          ${extraRecipientCommands("theReply", extra)}
           set content of theReply to "${safeBody}"
           ${composeAttachmentBlock("theReply", mat.paths)}
           ${finalAction}`,
@@ -5275,7 +5289,8 @@ ${indent}end try${this.sanitizeFragment("_uacct", indent)}${this.sanitizeFragmen
     send = true,
     attachments?: AttachmentInput[],
     nativeEditor = false,
-    source?: { account: string; mailbox: string; messageId?: string }
+    source?: { account: string; mailbox: string; messageId?: string },
+    extra?: { cc?: string[]; bcc?: string[] }
   ): { success: boolean; error?: string } {
     if (nativeEditor) {
       return this.composeNative(send ? "send" : "draft", body ?? "", attachments, {
@@ -5303,6 +5318,7 @@ ${indent}end try${this.sanitizeFragment("_uacct", indent)}${this.sanitizeFragmen
           set theForward to forward msg without opening window
           ${senderFragment("theForward", "forward")}
           ${recipientCommands}
+          ${extraRecipientCommands("theForward", extra)}
           ${safeBody ? `set content of theForward to "${safeBody}"` : ""}
           ${composeAttachmentBlock("theForward", mat.paths)}
           ${finalAction}`,

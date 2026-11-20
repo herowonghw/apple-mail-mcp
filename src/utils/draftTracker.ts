@@ -247,12 +247,15 @@ export async function checkDraft(saved: DraftSnapshot, createdAt: Date): Promise
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * The draft a compose just saved. Exchange accounts can store two copies of one
- * save a moment apart, so wait for Drafts to settle, keep one copy and delete
- * the others. Undefined when no new draft, or unrelated new drafts, appeared.
+ * The draft a compose just saved. Exchange can store one save as two copies a
+ * moment apart — sometimes one of them without the new text — so wait for
+ * Drafts to settle, keep the copy that holds `bodyHint` (else the longest) and
+ * delete the other new copies with the same subject. New drafts with another
+ * subject are never touched. Undefined when no new draft appeared.
  */
 export async function settleNewDraft(
   before: Set<string>,
+  bodyHint = "",
   settleMs = 3000
 ): Promise<DraftSnapshot | undefined> {
   let fresh: string[] = [];
@@ -261,14 +264,44 @@ export async function settleNewDraft(
     if (waited >= settleMs) break;
     await sleep(500);
   }
-  const snapshots = (await Promise.all(fresh.map(readDraft))).filter(
-    (d): d is DraftSnapshot => !!d
-  );
-  if (snapshots.length === 0) return undefined;
-  const [keep, ...rest] = snapshots.sort((a, b) => Number(b.id) - Number(a.id));
-  if (!rest.every((d) => sameContent(d, keep))) return undefined;
-  for (const extra of rest) await deleteDraft(extra.id);
-  return keep;
+  const read = await Promise.all(fresh.map(async (id) => ({ id, d: await readDraftFull(id) })));
+  const copies = read.filter((x): x is { id: string; d: FullDraft } => !!x.d);
+  if (copies.length === 0) return undefined;
+  const hint = normalizeContent(bodyHint).slice(0, 40);
+  const byLength = [...copies].sort((x, y) => y.d.content.length - x.d.content.length);
+  const keep =
+    (hint && byLength.find((x) => normalizeContent(x.d.content).includes(hint))) || byLength[0];
+  for (const other of copies) {
+    if (other.id !== keep.id && other.d.snapshot.subject === keep.d.snapshot.subject) {
+      await deleteDraft(other.id);
+    }
+  }
+  return keep.d.snapshot;
+}
+
+interface FullDraft {
+  snapshot: DraftSnapshot;
+  content: string;
+}
+
+/** A draft with its raw content, for choosing between copies. */
+async function readDraftFull(id: string): Promise<FullDraft | undefined> {
+  const out = await runMail(
+    [
+      ...SERIALIZE,
+      "on run argv",
+      'tell application "Mail"',
+      "  set ms to (messages of drafts mailbox whose id is ((item 1 of argv) as integer) and deleted status is false)",
+      '  if (count of ms) is 0 then return ""',
+      "  return my describeMessage(item 1 of ms)",
+      "end tell",
+      "end run",
+    ],
+    [id]
+  ).catch(() => "");
+  const snapshot = out ? parse(out) : undefined;
+  if (!snapshot) return undefined;
+  return { snapshot, content: out.split(US).slice(6).join(US) };
 }
 
 /** Closes open compose windows with this subject without saving; they would re-save the draft. */

@@ -53,6 +53,9 @@ export interface ReplyArgs {
   composition?: "native-editor";
   /** Files to attach (#267) — same schema, limits and read roots as send-email. */
   attachments?: AttachmentInput[];
+  /** Extra Cc / Bcc recipients (AppleScript path only). */
+  cc?: string[];
+  bcc?: string[];
 }
 
 export interface ForwardArgs {
@@ -66,6 +69,9 @@ export interface ForwardArgs {
   composition?: "native-editor";
   /** Files to attach (#267) — same schema, limits and read roots as send-email. */
   attachments?: AttachmentInput[];
+  /** Extra Cc / Bcc recipients (AppleScript path only). */
+  cc?: string[];
+  bcc?: string[];
 }
 
 type ComposeArgs = (ReplyArgs & { kind: "reply" }) | (ForwardArgs & { kind: "forward" });
@@ -278,6 +284,14 @@ async function runCompose(deps: ComposeDeps, args: ComposeArgs): Promise<ToolRes
     send &&
     transport !== "applescript" &&
     (transport === "smtp" || deps.smtpConfigured());
+  const extra = { cc: args.cc ?? [], bcc: args.bcc ?? [] };
+  // Added Cc/Bcc are set on Mail's compose object; refuse rather than drop them elsewhere.
+  if ((extra.cc.length || extra.bcc.length) && (smtp || nativeEditor)) {
+    return errorResponse(
+      `Failed to ${verb} message "${id}": cc/bcc can only be added on the Mail.app (AppleScript) ` +
+        `path. Pass transport: "applescript" (and no native editor), or leave cc/bcc out.`
+    );
+  }
   // Validate explicit numeric-id scope before any compose, including a forward
   // with no prepended body. Reuse the same original for every transport.
   let scopedOriginal: Awaited<ReturnType<typeof readOriginal>> | undefined;
@@ -445,17 +459,20 @@ async function runCompose(deps: ComposeDeps, args: ComposeArgs): Promise<ToolRes
           )
         : await replyComposeBody(deps, id, args.body);
       const files = attachmentCount ? attachments : undefined;
-      outcome = mutationScope
-        ? deps.mail.replyToMessage(
-            resolved.numericId,
-            body,
-            args.replyAll,
-            send,
-            files,
-            false,
-            mutationScope
-          )
-        : deps.mail.replyToMessage(resolved.numericId, body, args.replyAll, send, files);
+      const added = extra.cc.length || extra.bcc.length ? extra : undefined;
+      outcome =
+        mutationScope || added
+          ? deps.mail.replyToMessage(
+              resolved.numericId,
+              body,
+              args.replyAll,
+              send,
+              files,
+              false,
+              mutationScope,
+              ...(added ? [added] : [])
+            )
+          : deps.mail.replyToMessage(resolved.numericId, body, args.replyAll, send, files);
     } else {
       const body =
         scopedOriginal && (args.body || attachmentCount)
@@ -466,17 +483,20 @@ async function runCompose(deps: ComposeDeps, args: ComposeArgs): Promise<ToolRes
             )
           : await forwardComposeBody(deps, id, args.body, attachmentCount > 0);
       const files = attachmentCount ? attachments : undefined;
-      outcome = mutationScope
-        ? deps.mail.forwardMessage(
-            resolved.numericId,
-            args.to,
-            body,
-            send,
-            files,
-            false,
-            mutationScope
-          )
-        : deps.mail.forwardMessage(resolved.numericId, args.to, body, send, files);
+      const added = extra.cc.length || extra.bcc.length ? extra : undefined;
+      outcome =
+        mutationScope || added
+          ? deps.mail.forwardMessage(
+              resolved.numericId,
+              args.to,
+              body,
+              send,
+              files,
+              false,
+              mutationScope,
+              ...(added ? [added] : [])
+            )
+          : deps.mail.forwardMessage(resolved.numericId, args.to, body, send, files);
     }
     if (!outcome.success)
       return errorResponse(

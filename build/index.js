@@ -103795,6 +103795,18 @@ function draftSaveBlock(msgVar) {
         end repeat
         close ${msgVar} saving yes`;
 }
+function extraRecipientCommands(msgVar, extra) {
+  let commands = "";
+  for (const addr of extra?.cc ?? []) {
+    commands += `make new cc recipient at end of cc recipients of ${msgVar} with properties {address:"${escapeForAppleScript(addr)}"}
+`;
+  }
+  for (const addr of extra?.bcc ?? []) {
+    commands += `make new bcc recipient at end of bcc recipients of ${msgVar} with properties {address:"${escapeForAppleScript(addr)}"}
+`;
+  }
+  return commands;
+}
 function countAttachmentCommands(commands) {
   return (commands.match(/make new attachment/g) || []).length;
 }
@@ -106814,7 +106826,7 @@ end try`
    *   base64 items (materialized to 0600 temp files, removed afterwards)
    * @returns true if reply created/sent successfully
    */
-  replyToMessage(id, body, replyAll = false, send = true, attachments, nativeEditor = false, source) {
+  replyToMessage(id, body, replyAll = false, send = true, attachments, nativeEditor = false, source, extra) {
     if (nativeEditor) {
       return this.composeNative(send ? "send" : "draft", body, attachments, {
         id,
@@ -106833,6 +106845,7 @@ end try`
         `
           set theReply to reply msg without opening window${replyAllClause}
           ${senderFragment("theReply", "reply")}
+          ${extraRecipientCommands("theReply", extra)}
           set content of theReply to "${safeBody}"
           ${composeAttachmentBlock("theReply", mat.paths)}
           ${finalAction}`,
@@ -106854,7 +106867,7 @@ end try`
    * @param attachments - Additional files to attach (#267), as for replyToMessage
    * @returns true if forward created/sent successfully
    */
-  forwardMessage(id, to, body, send = true, attachments, nativeEditor = false, source) {
+  forwardMessage(id, to, body, send = true, attachments, nativeEditor = false, source, extra) {
     if (nativeEditor) {
       return this.composeNative(send ? "send" : "draft", body ?? "", attachments, {
         id,
@@ -106878,6 +106891,7 @@ end try`
           set theForward to forward msg without opening window
           ${senderFragment("theForward", "forward")}
           ${recipientCommands}
+          ${extraRecipientCommands("theForward", extra)}
           ${safeBody ? `set content of theForward to "${safeBody}"` : ""}
           ${composeAttachmentBlock("theForward", mat.paths)}
           ${finalAction}`,
@@ -109592,6 +109606,12 @@ async function runCompose(deps, args) {
   const attachmentCount = attachments?.length ?? 0;
   const withFiles = attachmentCount ? ` with ${attachmentCount} attachment(s)` : "";
   const smtp = !nativeEditor && send && transport2 !== "applescript" && (transport2 === "smtp" || deps.smtpConfigured());
+  const extra = { cc: args.cc ?? [], bcc: args.bcc ?? [] };
+  if ((extra.cc.length || extra.bcc.length) && (smtp || nativeEditor)) {
+    return errorResponse(
+      `Failed to ${verb} message "${id}": cc/bcc can only be added on the Mail.app (AppleScript) path. Pass transport: "applescript" (and no native editor), or leave cc/bcc out.`
+    );
+  }
   let scopedOriginal;
   if (scope) {
     try {
@@ -109731,14 +109751,16 @@ async function runCompose(deps, args) {
         requireReplyText(scopedOriginal.plainText)
       ) : await replyComposeBody(deps, id, args.body);
       const files = attachmentCount ? attachments : void 0;
-      outcome = mutationScope ? deps.mail.replyToMessage(
+      const added = extra.cc.length || extra.bcc.length ? extra : void 0;
+      outcome = mutationScope || added ? deps.mail.replyToMessage(
         resolved.numericId,
         body,
         args.replyAll,
         send,
         files,
         false,
-        mutationScope
+        mutationScope,
+        ...added ? [added] : []
       ) : deps.mail.replyToMessage(resolved.numericId, body, args.replyAll, send, files);
     } else {
       const body = scopedOriginal && (args.body || attachmentCount) ? buildForwardBody(
@@ -109747,14 +109769,16 @@ async function runCompose(deps, args) {
         args.body
       ) : await forwardComposeBody(deps, id, args.body, attachmentCount > 0);
       const files = attachmentCount ? attachments : void 0;
-      outcome = mutationScope ? deps.mail.forwardMessage(
+      const added = extra.cc.length || extra.bcc.length ? extra : void 0;
+      outcome = mutationScope || added ? deps.mail.forwardMessage(
         resolved.numericId,
         args.to,
         body,
         send,
         files,
         false,
-        mutationScope
+        mutationScope,
+        ...added ? [added] : []
       ) : deps.mail.forwardMessage(resolved.numericId, args.to, body, send, files);
     }
     if (!outcome.success)
@@ -111898,21 +111922,43 @@ async function checkDraft(saved, createdAt) {
   return sameContent(current, saved) ? { state: "unchanged", snapshot: current } : { state: "changed", snapshot: current };
 }
 var sleep2 = (ms) => new Promise((r) => setTimeout(r, ms));
-async function settleNewDraft(before, settleMs = 3e3) {
+async function settleNewDraft(before, bodyHint = "", settleMs = 3e3) {
   let fresh = [];
   for (let waited = 0; ; waited += 500) {
     fresh = (await listDraftIds()).filter((id) => !before.has(id));
     if (waited >= settleMs) break;
     await sleep2(500);
   }
-  const snapshots = (await Promise.all(fresh.map(readDraft))).filter(
-    (d) => !!d
-  );
-  if (snapshots.length === 0) return void 0;
-  const [keep, ...rest] = snapshots.sort((a, b) => Number(b.id) - Number(a.id));
-  if (!rest.every((d) => sameContent(d, keep))) return void 0;
-  for (const extra of rest) await deleteDraft(extra.id);
-  return keep;
+  const read = await Promise.all(fresh.map(async (id) => ({ id, d: await readDraftFull(id) })));
+  const copies = read.filter((x) => !!x.d);
+  if (copies.length === 0) return void 0;
+  const hint = normalizeContent(bodyHint).slice(0, 40);
+  const byLength = [...copies].sort((x, y) => y.d.content.length - x.d.content.length);
+  const keep = hint && byLength.find((x) => normalizeContent(x.d.content).includes(hint)) || byLength[0];
+  for (const other of copies) {
+    if (other.id !== keep.id && other.d.snapshot.subject === keep.d.snapshot.subject) {
+      await deleteDraft(other.id);
+    }
+  }
+  return keep.d.snapshot;
+}
+async function readDraftFull(id) {
+  const out = await runMail(
+    [
+      ...SERIALIZE,
+      "on run argv",
+      'tell application "Mail"',
+      "  set ms to (messages of drafts mailbox whose id is ((item 1 of argv) as integer) and deleted status is false)",
+      '  if (count of ms) is 0 then return ""',
+      "  return my describeMessage(item 1 of ms)",
+      "end tell",
+      "end run"
+    ],
+    [id]
+  ).catch(() => "");
+  const snapshot = out ? parse5(out) : void 0;
+  if (!snapshot) return void 0;
+  return { snapshot, content: out.split(US).slice(6).join(US) };
 }
 async function closeDraftWindows(subject) {
   await runMail(
@@ -112300,6 +112346,19 @@ function registerTool(name2, config2, cb) {
     const token = REFERENCES_SCHEMA.unwrap().element;
     external_exports.globalRegistry.add(token, { ...token.meta(), description: IN_REPLY_TO_SCHEMA.description });
   }
+  if (DRAFT_SAVING_TOOLS.has(name2)) {
+    const save = cb;
+    cb = (async (args, extra) => {
+      const savesDraft = name2 === "create-draft" || name2 === "use-template" || args.send === false;
+      if (!savesDraft) return save(args, extra);
+      const before = new Set(await listDraftIds().catch(() => []));
+      const result = await save(args, extra);
+      if (!result.isError) {
+        await settleNewDraft(before, String(args.body ?? "")).catch(() => void 0);
+      }
+      return result;
+    });
+  }
   if (CONFIRMED_TOOLS.has(name2)) {
     config2 = {
       ...config2,
@@ -112330,6 +112389,12 @@ function registerTool(name2, config2, cb) {
   return tool;
 }
 var confirmationGate = new ConfirmationGate();
+var DRAFT_SAVING_TOOLS = /* @__PURE__ */ new Set([
+  "create-draft",
+  "use-template",
+  "reply-to-message",
+  "forward-message"
+]);
 void nativeDialogBinary();
 var registeredTools = /* @__PURE__ */ new Map();
 function callTool(extra) {
@@ -112440,7 +112505,7 @@ function mailDrafts(extra) {
       const createdAt = /* @__PURE__ */ new Date();
       const before = new Set(await listDraftIds());
       await call(tool, { ...args, send: false });
-      const snapshot = await settleNewDraft(before);
+      const snapshot = await settleNewDraft(before, String(args.body ?? ""));
       if (!snapshot) return void 0;
       return { snapshot, createdAt, route: await routeOf(snapshot) };
     },
@@ -113549,7 +113614,11 @@ registerTool(
       body: external_exports.string().min(1, "Reply body is required").describe("Reply body (plain text; HTML tags such as <br> are not rendered)"),
       replyAll: external_exports.boolean().optional().default(false).describe("Reply to all recipients"),
       send: external_exports.boolean().optional().default(true).describe("Send immediately (false = save as draft)"),
-      attachments: ATTACHMENTS_SCHEMA
+      attachments: ATTACHMENTS_SCHEMA,
+      cc: external_exports.array(external_exports.string()).optional().describe(
+        "Extra Cc recipients to add (e.g. someone not on the original thread). Mail.app path only; refused with SMTP or the native editor."
+      ),
+      bcc: external_exports.array(external_exports.string()).optional().describe("Extra Bcc recipients to add. Mail.app path only, like cc.")
     },
     outputSchema: {
       transport: external_exports.enum(["smtp", "applescript"]).optional(),
@@ -113583,7 +113652,11 @@ registerTool(
       to: external_exports.array(external_exports.string()).min(1, "At least one recipient is required"),
       body: external_exports.string().optional().describe("Optional message to prepend (plain text)"),
       send: external_exports.boolean().optional().default(true).describe("Send immediately (false = save as draft)"),
-      attachments: ATTACHMENTS_SCHEMA
+      attachments: ATTACHMENTS_SCHEMA,
+      cc: external_exports.array(external_exports.string()).optional().describe(
+        "Extra Cc recipients to add (e.g. someone not on the original thread). Mail.app path only; refused with SMTP or the native editor."
+      ),
+      bcc: external_exports.array(external_exports.string()).optional().describe("Extra Bcc recipients to add. Mail.app path only, like cc.")
     },
     outputSchema: {
       transport: external_exports.enum(["smtp", "applescript"]).optional(),
