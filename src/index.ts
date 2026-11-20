@@ -180,6 +180,7 @@ import {
 } from "@/utils/confirmationGate.js";
 import {
   checkDraft,
+  cleanupNativeLeftovers,
   composeMatches,
   deleteDraftCopies,
   focusCompose,
@@ -2311,6 +2312,55 @@ async function toNumericMailId(id: string): Promise<{ numericId?: string; error?
   return { numericId };
 }
 
+/**
+ * Replies and forwards try Mail's native editor first, so the draft has Mail's own
+ * quote and signature. That editor needs Mail in the foreground while it inserts
+ * text; when it fails before anything was sent, its half-made compose and draft
+ * are removed and the plain-text path runs instead, saying so. An explicit
+ * `composition`, an SMTP send, or an unknown native outcome is left alone.
+ */
+async function preferNativeEditor<
+  A extends Record<string, unknown>,
+  R extends { content: Array<{ type: string; text?: string }>; isError?: boolean },
+>(args: A, run: (a: A) => Promise<R>): Promise<R> {
+  const smtp =
+    args.transport === "smtp" ||
+    (args.send !== false && args.transport !== "applescript" && composeDeps.smtpConfigured());
+  if (args.composition !== undefined || smtp) return run(args);
+  const note = (result: R, text: string): R => ({
+    ...result,
+    content: [...result.content, { type: "text" as const, text }],
+  });
+  const ready = mailManager.nativeEditorReady();
+  if (!ready.success) {
+    return note(
+      await run(args),
+      `Mail's native reply format was not used (${ready.error ?? "native editor unavailable"}); the quote is plain text.`
+    );
+  }
+  const before = new Set(await listDraftIds().catch(() => [] as string[]));
+  const native = await run({ ...args, composition: "native-editor" });
+  if (!native.isError) return native;
+  const reason = native.content
+    .map((c) => c.text ?? "")
+    .join(" ")
+    .trim();
+  // Only a failure that is known to have sent nothing may be retried another way.
+  if (!/nothing was sent|nothing finalized/i.test(reason ?? "")) return native;
+  // Mail may store the half-made compose a few seconds later, so sweep again after
+  // the plain-text attempt; the body hint keeps the draft that attempt saved.
+  const hint = String(args.body ?? "");
+  await cleanupNativeLeftovers(before, hint).catch(() => undefined);
+  const plain = await run(args);
+  await new Promise((r) => setTimeout(r, 6000));
+  await cleanupNativeLeftovers(before, hint).catch(() => undefined);
+  return note(
+    plain,
+    `Mail's native reply format could not be used this time (${reason?.slice(0, 160)}); ` +
+      `its half-made compose was removed and the plain-text quote was used instead.`
+  );
+}
+
 const composeDeps: ComposeDeps = {
   mail: mailManager,
   imapSource: imapGetMessageSource,
@@ -2388,7 +2438,10 @@ registerTool(
       sentCopyAlreadyFiled: SENT_COPY_ALREADY_FILED_SCHEMA,
     },
   },
-  withErrorHandling((args) => runReply(composeDeps, args), "Error replying to message")
+  withErrorHandling(
+    (args) => preferNativeEditor(args, (a) => runReply(composeDeps, a)),
+    "Error replying to message"
+  )
 );
 
 // --- forward-message ---
@@ -2447,7 +2500,10 @@ registerTool(
       sentCopyAlreadyFiled: SENT_COPY_ALREADY_FILED_SCHEMA,
     },
   },
-  withErrorHandling((args) => runForward(composeDeps, args), "Error forwarding message")
+  withErrorHandling(
+    (args) => preferNativeEditor(args, (a) => runForward(composeDeps, a)),
+    "Error forwarding message"
+  )
 );
 
 // --- mark-as-read ---

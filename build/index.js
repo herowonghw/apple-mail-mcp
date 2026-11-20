@@ -109302,9 +109302,13 @@ ${attribution}${quoteBody(originalPlainText)}` : "";
   return `${body}${quoted}`;
 }
 function buildAttribution(original) {
-  const who = original.from[0] ?? original.replyTo[0] ?? "the sender";
-  return original.date ? `On ${original.date}, ${who} wrote:
-` : `${who} wrote:
+  const who = original.from[0] ?? original.replyTo[0] ?? "\u53D1\u4EF6\u4EBA";
+  const when = original.date ? new Date(original.date) : void 0;
+  if (!when || Number.isNaN(when.getTime())) return `${who} \u5199\u9053\uFF1A
+`;
+  const pad = (n) => String(n).padStart(2, "0");
+  const stamp = `${when.getFullYear()}\u5E74${when.getMonth() + 1}\u6708${when.getDate()}\u65E5 ${pad(when.getHours())}:${pad(when.getMinutes())}`;
+  return `\u5728 ${stamp}\uFF0C${who} \u5199\u9053\uFF1A
 `;
 }
 function buildForwardOptions(args) {
@@ -112165,6 +112169,33 @@ async function sendCompose(outgoingId) {
   );
   if (out.trim() !== "true") throw new Error(`Mail did not send the message (${out.trim()})`);
 }
+var NATIVE_MARKER_PREFIX = "MCP Native ";
+async function cleanupNativeLeftovers(before, bodyHint) {
+  await runMail(
+    [
+      "on run argv",
+      'tell application "Mail"',
+      "  repeat with om in (every outgoing message whose subject starts with (item 1 of argv))",
+      "    try",
+      "      close om saving no",
+      "    end try",
+      "  end repeat",
+      "end tell",
+      "end run"
+    ],
+    [NATIVE_MARKER_PREFIX]
+  ).catch(() => "");
+  const hint = normalizeContent(bodyHint).slice(0, 40);
+  for (const id of (await listDraftIds()).filter((x) => !before.has(x))) {
+    const draft = await readDraftFull(id);
+    if (!draft) continue;
+    const subject = draft.snapshot.subject;
+    const marked = subject.startsWith(NATIVE_MARKER_PREFIX);
+    const replyLike = /^(re|fw|fwd|回复|转发)\s*[:：]/i.test(subject);
+    const hasBody = !!hint && normalizeContent(draft.content).includes(hint);
+    if (marked || replyLike && !hasBody) await deleteDraft(id);
+  }
+}
 
 // src/index.ts
 init_attachmentReadPolicy();
@@ -113612,6 +113643,35 @@ async function toNumericMailId(id) {
   }
   return { numericId };
 }
+async function preferNativeEditor(args, run2) {
+  const smtp = args.transport === "smtp" || args.send !== false && args.transport !== "applescript" && composeDeps.smtpConfigured();
+  if (args.composition !== void 0 || smtp) return run2(args);
+  const note = (result, text) => ({
+    ...result,
+    content: [...result.content, { type: "text", text }]
+  });
+  const ready = mailManager.nativeEditorReady();
+  if (!ready.success) {
+    return note(
+      await run2(args),
+      `Mail's native reply format was not used (${ready.error ?? "native editor unavailable"}); the quote is plain text.`
+    );
+  }
+  const before = new Set(await listDraftIds().catch(() => []));
+  const native = await run2({ ...args, composition: "native-editor" });
+  if (!native.isError) return native;
+  const reason = native.content.map((c) => c.text ?? "").join(" ").trim();
+  if (!/nothing was sent|nothing finalized/i.test(reason ?? "")) return native;
+  const hint = String(args.body ?? "");
+  await cleanupNativeLeftovers(before, hint).catch(() => void 0);
+  const plain = await run2(args);
+  await new Promise((r) => setTimeout(r, 6e3));
+  await cleanupNativeLeftovers(before, hint).catch(() => void 0);
+  return note(
+    plain,
+    `Mail's native reply format could not be used this time (${reason?.slice(0, 160)}); its half-made compose was removed and the plain-text quote was used instead.`
+  );
+}
 var composeDeps = {
   mail: mailManager,
   imapSource: imapGetMessageSource,
@@ -113659,7 +113719,10 @@ registerTool(
       sentCopyAlreadyFiled: SENT_COPY_ALREADY_FILED_SCHEMA
     }
   },
-  withErrorHandling((args) => runReply(composeDeps, args), "Error replying to message")
+  withErrorHandling(
+    (args) => preferNativeEditor(args, (a) => runReply(composeDeps, a)),
+    "Error replying to message"
+  )
 );
 registerTool(
   "forward-message",
@@ -113698,7 +113761,10 @@ registerTool(
       sentCopyAlreadyFiled: SENT_COPY_ALREADY_FILED_SCHEMA
     }
   },
-  withErrorHandling((args) => runForward(composeDeps, args), "Error forwarding message")
+  withErrorHandling(
+    (args) => preferNativeEditor(args, (a) => runForward(composeDeps, a)),
+    "Error forwarding message"
+  )
 );
 registerTool(
   "mark-as-read",

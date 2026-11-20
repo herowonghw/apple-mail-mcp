@@ -193,8 +193,8 @@ export function buildReplyOptions(args: {
 }
 
 /**
- * The new text, then a blank line, an attribution line ("On <date>, <sender>
- * wrote:") and the quoted original — the reply body format shared by the SMTP
+ * The new text, then a blank line, an attribution line ("在 <date>，<sender>
+ * 写道：") and the quoted original — the reply body format shared by the SMTP
  * send path ({@link buildReplyOptions}) and the AppleScript draft/send path
  * (`reply-to-message`'s `applescript` transport). The AppleScript `content`
  * property can't hold "our text" and "Mail's own quote" independently — Mail
@@ -213,10 +213,19 @@ export function buildReplyBody(
   return `${body}${quoted}`;
 }
 
-/** "On <date>, <sender> wrote:\n" — omits the date clause when unknown. */
+/**
+ * "在 2026年11月19日 19:39，<sender> 写道：\n" — the attribution Mail itself uses in
+ * Chinese; omits the date clause when unknown or unparseable.
+ */
 function buildAttribution(original: OriginalHeaders): string {
-  const who = original.from[0] ?? original.replyTo[0] ?? "the sender";
-  return original.date ? `On ${original.date}, ${who} wrote:\n` : `${who} wrote:\n`;
+  const who = original.from[0] ?? original.replyTo[0] ?? "发件人";
+  const when = original.date ? new Date(original.date) : undefined;
+  if (!when || Number.isNaN(when.getTime())) return `${who} 写道：\n`;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const stamp =
+    `${when.getFullYear()}年${when.getMonth() + 1}月${when.getDate()}日 ` +
+    `${pad(when.getHours())}:${pad(when.getMinutes())}`;
+  return `在 ${stamp}，${who} 写道：\n`;
 }
 
 /**

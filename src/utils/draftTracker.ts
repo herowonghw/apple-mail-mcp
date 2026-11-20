@@ -545,3 +545,39 @@ export async function sendCompose(outgoingId: string): Promise<void> {
   );
   if (out.trim() !== "true") throw new Error(`Mail did not send the message (${out.trim()})`);
 }
+
+/** Subject Mail's native composer gives a compose while it inserts text. */
+const NATIVE_MARKER_PREFIX = "MCP Native ";
+
+/**
+ * After a failed native-editor compose: closes its marked compose windows without
+ * saving and deletes the drafts it left — new since `before`, and either still
+ * marked or a reply/forward without `bodyHint` (the text the failed attempt never
+ * inserted). A draft holding the body, and any older draft, is kept.
+ */
+export async function cleanupNativeLeftovers(before: Set<string>, bodyHint: string): Promise<void> {
+  await runMail(
+    [
+      "on run argv",
+      'tell application "Mail"',
+      "  repeat with om in (every outgoing message whose subject starts with (item 1 of argv))",
+      "    try",
+      "      close om saving no",
+      "    end try",
+      "  end repeat",
+      "end tell",
+      "end run",
+    ],
+    [NATIVE_MARKER_PREFIX]
+  ).catch(() => "");
+  const hint = normalizeContent(bodyHint).slice(0, 40);
+  for (const id of (await listDraftIds()).filter((x) => !before.has(x))) {
+    const draft = await readDraftFull(id);
+    if (!draft) continue;
+    const subject = draft.snapshot.subject;
+    const marked = subject.startsWith(NATIVE_MARKER_PREFIX);
+    const replyLike = /^(re|fw|fwd|回复|转发)\s*[:：]/i.test(subject);
+    const hasBody = !!hint && normalizeContent(draft.content).includes(hint);
+    if (marked || (replyLike && !hasBody)) await deleteDraft(id);
+  }
+}
