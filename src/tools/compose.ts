@@ -38,6 +38,11 @@ export interface ComposeDeps {
   imapSource: (id: string) => Promise<ImapMessageSource>;
   numericId: (id: string) => Promise<{ numericId?: string; error?: string }>;
   smtpConfigured: () => boolean;
+  /**
+   * When present, replies and forwards that name no composition use Mail's native
+   * editor (Mail's own quote and signature) whenever it is available.
+   */
+  nativeEditorReady?: () => { success: boolean; error?: string };
   smtpConfig: () => SmtpConfig;
   smtpSend: (opts: SmtpSendOptions, config: SmtpConfig) => Promise<SmtpSendResult>;
 }
@@ -245,7 +250,22 @@ async function forwardComposeBody(
 async function runCompose(deps: ComposeDeps, args: ComposeArgs): Promise<ToolResponse> {
   const { id, send, transport, attachments } = args;
   const verb = args.kind === "reply" ? "reply to" : "forward";
-  const nativeEditor = args.composition === "native-editor";
+  // Mail's native editor keeps Mail's own quote and signature. Use it by default when
+  // SMTP is not in play; check the permissions first, before any compose exists, so
+  // falling back to the plain-text quote can never leave a half-made message behind.
+  const smtpWanted =
+    send && transport !== "applescript" && (transport === "smtp" || deps.smtpConfigured());
+  let nativeFallbackNote = "";
+  let nativeEditor = args.composition === "native-editor";
+  if (args.composition === undefined && !smtpWanted && deps.nativeEditorReady) {
+    const ready = deps.nativeEditorReady();
+    if (ready.success) nativeEditor = true;
+    else {
+      nativeFallbackNote =
+        ` (Mail's native reply format was not used: ${ready.error ?? "native editor unavailable"}; ` +
+        `the quote is plain text. Grant Accessibility to the MCP's node to get Mail's own format.)`;
+    }
+  }
   const hasScope = args.account !== undefined || args.mailbox !== undefined;
   if (hasScope && (!args.account?.trim() || !args.mailbox?.trim())) {
     return errorResponse(
@@ -285,11 +305,12 @@ async function runCompose(deps: ComposeDeps, args: ComposeArgs): Promise<ToolRes
     transport !== "applescript" &&
     (transport === "smtp" || deps.smtpConfigured());
   const extra = { cc: args.cc ?? [], bcc: args.bcc ?? [] };
+  const added = extra.cc.length || extra.bcc.length ? extra : undefined;
   // Added Cc/Bcc are set on Mail's compose object; refuse rather than drop them elsewhere.
-  if ((extra.cc.length || extra.bcc.length) && (smtp || nativeEditor)) {
+  if ((extra.cc.length || extra.bcc.length) && smtp) {
     return errorResponse(
-      `Failed to ${verb} message "${id}": cc/bcc can only be added on the Mail.app (AppleScript) ` +
-        `path. Pass transport: "applescript" (and no native editor), or leave cc/bcc out.`
+      `Failed to ${verb} message "${id}": cc/bcc can only be added on the Mail.app path. ` +
+        `Pass transport: "applescript", or leave cc/bcc out.`
     );
   }
   // Validate explicit numeric-id scope before any compose, including a forward
@@ -420,36 +441,47 @@ async function runCompose(deps: ComposeDeps, args: ComposeArgs): Promise<ToolRes
     if (nativeEditor && !scopedOriginal) await readOriginal(deps, id, undefined, true);
     let outcome: { success: boolean; error?: string };
     if (nativeEditor && args.kind === "reply") {
-      outcome = mutationScope
-        ? deps.mail.replyToMessage(
-            resolved.numericId,
-            args.body,
-            args.replyAll,
-            send,
-            attachments,
-            true,
-            mutationScope
-          )
-        : deps.mail.replyToMessage(
-            resolved.numericId,
-            args.body,
-            args.replyAll,
-            send,
-            attachments,
-            true
-          );
+      outcome =
+        mutationScope || added
+          ? deps.mail.replyToMessage(
+              resolved.numericId,
+              args.body,
+              args.replyAll,
+              send,
+              attachments,
+              true,
+              mutationScope,
+              ...(added ? [added] : [])
+            )
+          : deps.mail.replyToMessage(
+              resolved.numericId,
+              args.body,
+              args.replyAll,
+              send,
+              attachments,
+              true
+            );
     } else if (nativeEditor && args.kind === "forward") {
-      outcome = mutationScope
-        ? deps.mail.forwardMessage(
-            resolved.numericId,
-            args.to,
-            args.body,
-            send,
-            attachments,
-            true,
-            mutationScope
-          )
-        : deps.mail.forwardMessage(resolved.numericId, args.to, args.body, send, attachments, true);
+      outcome =
+        mutationScope || added
+          ? deps.mail.forwardMessage(
+              resolved.numericId,
+              args.to,
+              args.body,
+              send,
+              attachments,
+              true,
+              mutationScope,
+              ...(added ? [added] : [])
+            )
+          : deps.mail.forwardMessage(
+              resolved.numericId,
+              args.to,
+              args.body,
+              send,
+              attachments,
+              true
+            );
     } else if (args.kind === "reply") {
       const body = scopedOriginal
         ? buildReplyBody(
@@ -459,7 +491,6 @@ async function runCompose(deps: ComposeDeps, args: ComposeArgs): Promise<ToolRes
           )
         : await replyComposeBody(deps, id, args.body);
       const files = attachmentCount ? attachments : undefined;
-      const added = extra.cc.length || extra.bcc.length ? extra : undefined;
       outcome =
         mutationScope || added
           ? deps.mail.replyToMessage(
@@ -483,7 +514,6 @@ async function runCompose(deps: ComposeDeps, args: ComposeArgs): Promise<ToolRes
             )
           : await forwardComposeBody(deps, id, args.body, attachmentCount > 0);
       const files = attachmentCount ? attachments : undefined;
-      const added = extra.cc.length || extra.bcc.length ? extra : undefined;
       outcome =
         mutationScope || added
           ? deps.mail.forwardMessage(
@@ -509,7 +539,9 @@ async function runCompose(deps: ComposeDeps, args: ComposeArgs): Promise<ToolRes
           : "Reply saved as draft"
         : send
           ? `Message forwarded to ${args.to.join(", ")}`
-          : "Forward saved as draft") + withFiles;
+          : "Forward saved as draft") +
+      withFiles +
+      nativeFallbackNote;
     return successResponse(text, {
       ok: true,
       sent: send,

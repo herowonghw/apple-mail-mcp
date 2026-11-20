@@ -1087,3 +1087,39 @@ describe("added cc/bcc on reply and forward", () => {
     expect(call[7]).toEqual({ cc: ["b@example.com"], bcc: [] });
   });
 });
+
+describe("Mail's native editor as the default for replies", () => {
+  it("uses the native editor when it is available and SMTP is not in play", async () => {
+    const d = { ...fixture(), nativeEditorReady: vi.fn(() => ({ success: true })) };
+    d.smtpConfigured.mockReturnValue(false);
+    d.mail.getRawSource.mockReturnValue(raw);
+    d.numericId.mockResolvedValue({ numericId: "42" });
+    const result = await runReply(d, { ...args, id: "42", send: false, cc: ["w@example.com"] });
+    expect(result.isError).not.toBe(true);
+    const call = d.mail.replyToMessage.mock.calls[0] as unknown[];
+    expect(call[1]).toBe(args.body); // no reconstructed quote: Mail adds its own
+    expect(call[5]).toBe(true);
+    expect(call[7]).toEqual({ cc: ["w@example.com"], bcc: [] });
+  });
+
+  it("falls back to the plain-text quote, and says so, without the permissions", async () => {
+    const d = {
+      ...fixture(),
+      nativeEditorReady: vi.fn(() => ({ success: false, error: "Accessibility not granted" })),
+    };
+    d.smtpConfigured.mockReturnValue(false);
+    d.mail.getRawSource.mockReturnValue(raw);
+    d.numericId.mockResolvedValue({ numericId: "42" });
+    const result = await runReply(d, { ...args, id: "42", send: false });
+    const call = d.mail.replyToMessage.mock.calls[0] as unknown[];
+    expect(call[5]).not.toBe(true);
+    expect(JSON.stringify(result)).toContain("Accessibility not granted");
+  });
+
+  it("keeps an explicit plain path when SMTP will send", async () => {
+    const d = { ...fixture(), nativeEditorReady: vi.fn(() => ({ success: true })) };
+    await runReply(d, args);
+    expect(d.nativeEditorReady).not.toHaveBeenCalled();
+    expect(d.smtpSend).toHaveBeenCalled();
+  });
+});

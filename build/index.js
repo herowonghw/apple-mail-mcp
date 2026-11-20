@@ -106528,6 +106528,11 @@ ${indent}end try${this.sanitizeFragment("_uacct", indent)}${this.sanitizeFragmen
    * re-identify and finalize once. Any failure leaves the compose for inspection.
    * Neither creation nor finalization assigns Mail's body/content property.
    */
+  /** Whether Mail's native editor can be used now (Accessibility and Automation granted). */
+  nativeEditorReady() {
+    const preflight = nativeEditorPreflight();
+    return preflight.success ? { success: true } : { success: false, error: preflight.error };
+  }
   composeNative(mode, body, attachments, options) {
     if (!options.kind && !options.account) {
       return {
@@ -106831,6 +106836,8 @@ end try`
       return this.composeNative(send ? "send" : "draft", body, attachments, {
         id,
         replyAll,
+        cc: extra?.cc,
+        bcc: extra?.bcc,
         kind: "reply",
         source
       });
@@ -106872,6 +106879,8 @@ end try`
       return this.composeNative(send ? "send" : "draft", body ?? "", attachments, {
         id,
         to,
+        cc: extra?.cc,
+        bcc: extra?.bcc,
         kind: "forward",
         source
       });
@@ -109573,7 +109582,16 @@ async function forwardComposeBody(deps, id, body, hasAttachments = false) {
 async function runCompose(deps, args) {
   const { id, send, transport: transport2, attachments } = args;
   const verb = args.kind === "reply" ? "reply to" : "forward";
-  const nativeEditor = args.composition === "native-editor";
+  const smtpWanted = send && transport2 !== "applescript" && (transport2 === "smtp" || deps.smtpConfigured());
+  let nativeFallbackNote = "";
+  let nativeEditor = args.composition === "native-editor";
+  if (args.composition === void 0 && !smtpWanted && deps.nativeEditorReady) {
+    const ready = deps.nativeEditorReady();
+    if (ready.success) nativeEditor = true;
+    else {
+      nativeFallbackNote = ` (Mail's native reply format was not used: ${ready.error ?? "native editor unavailable"}; the quote is plain text. Grant Accessibility to the MCP's node to get Mail's own format.)`;
+    }
+  }
   const hasScope = args.account !== void 0 || args.mailbox !== void 0;
   if (hasScope && (!args.account?.trim() || !args.mailbox?.trim())) {
     return errorResponse(
@@ -109607,9 +109625,10 @@ async function runCompose(deps, args) {
   const withFiles = attachmentCount ? ` with ${attachmentCount} attachment(s)` : "";
   const smtp = !nativeEditor && send && transport2 !== "applescript" && (transport2 === "smtp" || deps.smtpConfigured());
   const extra = { cc: args.cc ?? [], bcc: args.bcc ?? [] };
-  if ((extra.cc.length || extra.bcc.length) && (smtp || nativeEditor)) {
+  const added = extra.cc.length || extra.bcc.length ? extra : void 0;
+  if ((extra.cc.length || extra.bcc.length) && smtp) {
     return errorResponse(
-      `Failed to ${verb} message "${id}": cc/bcc can only be added on the Mail.app (AppleScript) path. Pass transport: "applescript" (and no native editor), or leave cc/bcc out.`
+      `Failed to ${verb} message "${id}": cc/bcc can only be added on the Mail.app path. Pass transport: "applescript", or leave cc/bcc out.`
     );
   }
   let scopedOriginal;
@@ -109718,14 +109737,15 @@ async function runCompose(deps, args) {
     if (nativeEditor && !scopedOriginal) await readOriginal(deps, id, void 0, true);
     let outcome;
     if (nativeEditor && args.kind === "reply") {
-      outcome = mutationScope ? deps.mail.replyToMessage(
+      outcome = mutationScope || added ? deps.mail.replyToMessage(
         resolved.numericId,
         args.body,
         args.replyAll,
         send,
         attachments,
         true,
-        mutationScope
+        mutationScope,
+        ...added ? [added] : []
       ) : deps.mail.replyToMessage(
         resolved.numericId,
         args.body,
@@ -109735,15 +109755,23 @@ async function runCompose(deps, args) {
         true
       );
     } else if (nativeEditor && args.kind === "forward") {
-      outcome = mutationScope ? deps.mail.forwardMessage(
+      outcome = mutationScope || added ? deps.mail.forwardMessage(
         resolved.numericId,
         args.to,
         args.body,
         send,
         attachments,
         true,
-        mutationScope
-      ) : deps.mail.forwardMessage(resolved.numericId, args.to, args.body, send, attachments, true);
+        mutationScope,
+        ...added ? [added] : []
+      ) : deps.mail.forwardMessage(
+        resolved.numericId,
+        args.to,
+        args.body,
+        send,
+        attachments,
+        true
+      );
     } else if (args.kind === "reply") {
       const body = scopedOriginal ? buildReplyBody(
         args.body,
@@ -109751,7 +109779,6 @@ async function runCompose(deps, args) {
         requireReplyText(scopedOriginal.plainText)
       ) : await replyComposeBody(deps, id, args.body);
       const files = attachmentCount ? attachments : void 0;
-      const added = extra.cc.length || extra.bcc.length ? extra : void 0;
       outcome = mutationScope || added ? deps.mail.replyToMessage(
         resolved.numericId,
         body,
@@ -109769,7 +109796,6 @@ async function runCompose(deps, args) {
         args.body
       ) : await forwardComposeBody(deps, id, args.body, attachmentCount > 0);
       const files = attachmentCount ? attachments : void 0;
-      const added = extra.cc.length || extra.bcc.length ? extra : void 0;
       outcome = mutationScope || added ? deps.mail.forwardMessage(
         resolved.numericId,
         args.to,
@@ -109785,7 +109811,7 @@ async function runCompose(deps, args) {
       return errorResponse(
         `Failed to ${verb} message "${id}": ${outcome.error ?? "Mail.app compose failed"}`
       );
-    const text = (args.kind === "reply" ? send ? "Reply sent via AppleScript" : "Reply saved as draft" : send ? `Message forwarded to ${args.to.join(", ")}` : "Forward saved as draft") + withFiles;
+    const text = (args.kind === "reply" ? send ? "Reply sent via AppleScript" : "Reply saved as draft" : send ? `Message forwarded to ${args.to.join(", ")}` : "Forward saved as draft") + withFiles + nativeFallbackNote;
     return successResponse(text, {
       ok: true,
       sent: send,

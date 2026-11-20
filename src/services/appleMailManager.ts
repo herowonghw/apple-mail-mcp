@@ -4845,6 +4845,12 @@ ${indent}end try${this.sanitizeFragment("_uacct", indent)}${this.sanitizeFragmen
    * re-identify and finalize once. Any failure leaves the compose for inspection.
    * Neither creation nor finalization assigns Mail's body/content property.
    */
+  /** Whether Mail's native editor can be used now (Accessibility and Automation granted). */
+  nativeEditorReady(): { success: boolean; error?: string } {
+    const preflight = nativeEditorPreflight();
+    return preflight.success ? { success: true } : { success: false, error: preflight.error };
+  }
+
   private composeNative(
     mode: "send" | "draft",
     body: string,
@@ -5240,6 +5246,8 @@ ${indent}end try${this.sanitizeFragment("_uacct", indent)}${this.sanitizeFragmen
       return this.composeNative(send ? "send" : "draft", body, attachments, {
         id,
         replyAll,
+        cc: extra?.cc,
+        bcc: extra?.bcc,
         kind: "reply",
         source,
       });
@@ -5296,6 +5304,8 @@ ${indent}end try${this.sanitizeFragment("_uacct", indent)}${this.sanitizeFragmen
       return this.composeNative(send ? "send" : "draft", body ?? "", attachments, {
         id,
         to,
+        cc: extra?.cc,
+        bcc: extra?.bcc,
         kind: "forward",
         source,
       });
